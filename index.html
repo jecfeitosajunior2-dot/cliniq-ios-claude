@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"="width=device-width, initial-scale=1.0">
+    <title>ClinIQ - O Shazam da Consulta Médica</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f172a 100%);
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 448px;
+            margin: 0 auto;
+            padding: 3rem 1.5rem;
+            min-height: 100vh;
+            display: flex;
+            flex-column: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .header {
+            text-align: left;
+            margin-bottom: 2rem;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .sphere-container {
+            position: relative;
+            margin: 4rem 0;
+        }
+
+        .sphere {
+            width: 256px;
+            height: 256px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #0ea5e9 0%, #064e85 50%, #032542 100%);
+            box-shadow:
+                0 20px 60px rgba(14, 165, 233, 0.3),
+                0 0 100px rgba(14, 165, 233, 0.1);
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            position: relative;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .sphere:hover {
+            transform: scale(1.05);
+        }
+
+        .sphere:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.2); opacity: 0.1; }
+        }
+
+        .glow-ring {
+            position: absolute;
+            inset: -3rem;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.3) 0%, transparent 70%);
+            animation: pulse 3s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        .sphere-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+        }
+
+        .main-text {
+            text-align: center;
+            margin-top: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .main-text h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .main-text p {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            max-width: 20rem;
+            margin: 0 auto;
+        }
+
+        .recent-cases {
+            width: 100%;
+            margin-top: 4rem;
+        }
+
+        .recent-cases h3 {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 1rem;
+        }
+
+        .case-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .case-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .avatar {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .case-info {
+            flex: 1;
+        }
+
+        .case-specialty {
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .case-time {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+            width: 100%;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .stat-icon {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1e293b 0%, #1e3a8a 100%);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-content p {
+            color: #94a3b8;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            border: none;
+            border-radius: 0.75rem;
+            padding: 1rem 2rem;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ClinIQ</h1>
+            <p class="subtitle">O Shazam da consulta médica</p>
+        </div>
+
+        <div class="sphere-container">
+            <div class="glow-ring"></div>
+            <div class="sphere" onclick="showModal()">
+                <div class="sphere-icon">🎤</div>
+            </div>
+        </div>
+
+        <div class="main-text">
+            <h2>Toque para capturar a consulta</h2>
+            <p>Áudio, raciocínio clínico e dossiê em minutos</p>
+        </div>
+
+        <div class="recent-cases">
+            <h3>Casos Recentes</h3>
+            <div class="case-card">
+                <div class="avatar">M.S.</div>
+                <div class="case-info">
+                    <div class="case-specialty">Neurologia</div>
+                    <div class="case-time">2h atrás</div>
+                </div>
+            </div>
+            <div class="case-card">
+                <div class="avatar">R.C.</div>
+                <div class="case-info">
+                    <div class="case-specialty">Cardiologia</div>
+                    <div class="case-time">1d atrás</div>
+                </div>
+            </div>
+            <div class="case-card">
+                <div class="avatar">A.L.</div>
+                <div class="case-info">
+                    <div class="case-specialty">Endocrinologia</div>
+                    <div class="case-time">3d atrás</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-label">3 hoje</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📝</div>
+                <div class="stat-label">2 PDFs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⏱️</div>
+                <div class="stat-label">1 pendente</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <h3>✨ Demo do ClinIQ</h3>
+            <p>Esta é uma demonstração visual do conceito "Shazam da Consulta Médica".</p>
+            <p style="margin-bottom: 1rem;">Para a experiência completa com animações premium, rode o projeto Next.js:</p>
+            <code style="background: rgba(0,0,0,0.3); padding: 0.5rem 1rem; border-radius: 0.5rem; display: block; margin-bottom: 2rem; font-size: 0.875rem;">
+                npm install && npm run dev
+            </code>
+            <button class="btn" onclick="closeModal()">Entendi</button>
+        </div>
+    </div>
+
+    <script>
+        function showModal() {
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+    </script>
+</body>
+</html>

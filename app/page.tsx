@@ -1,90 +1,44 @@
 'use client';
 
 import { useState } from 'react';
-import Home from '@/components/screens/Home';
-import Recording from '@/components/screens/Recording';
+import HomeCapture from '@/components/screens/HomeCapture';
+import RecordingInProgress from '@/components/screens/RecordingInProgress';
 import CompleteCase from '@/components/screens/CompleteCase';
-import AnalysisInProgress from '@/components/screens/AnalysisInProgress';
+import IntelligentAnalysis from '@/components/screens/IntelligentAnalysis';
 import CaseIntelligenceReport from '@/components/screens/CaseIntelligenceReport';
+import PDFPreview from '@/components/screens/PDFPreview';
 
-type Screen = 'home' | 'recording' | 'complete' | 'analysis' | 'report';
+type Screen = 'home' | 'recording' | 'complete' | 'analysis' | 'report' | 'pdf';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [isDark, setIsDark] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-
-  const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (!isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
-
-  const handleRecordingComplete = () => {
-    setCurrentScreen('complete');
-  };
-
-  const handleCaseSubmit = () => {
-    setCurrentScreen('analysis');
-  };
-
-  const handleAnalysisComplete = () => {
-    setCurrentScreen('report');
-  };
+  const [recordingTime, setRecordingTime] = useState(0);
 
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
-        return (
-          <Home 
-            onNavigate={(screen) => setCurrentScreen(screen as Screen)} 
-            onToggleTheme={toggleTheme} 
-            isDark={isDark} 
-          />
-        );
+        return <HomeCapture onStartRecording={() => setCurrentScreen('recording')} />;
       case 'recording':
-        return (
-          <Recording 
-            onComplete={handleRecordingComplete}
-            onCancel={() => setCurrentScreen('home')}
-          />
-        );
+        return <RecordingInProgress
+          onEnd={() => setCurrentScreen('complete')}
+          recordingTime={recordingTime}
+          setRecordingTime={setRecordingTime}
+        />;
       case 'complete':
-        return (
-          <CompleteCase 
-            onSubmit={handleCaseSubmit}
-            onBack={() => setCurrentScreen('home')}
-            recordingDuration={recordingDuration}
-          />
-        );
+        return <CompleteCase onSubmit={() => setCurrentScreen('analysis')} />;
       case 'analysis':
-        return (
-          <AnalysisInProgress 
-            onComplete={handleAnalysisComplete}
-          />
-        );
+        return <IntelligentAnalysis onComplete={() => setCurrentScreen('report')} />;
       case 'report':
-        return (
-          <CaseIntelligenceReport 
-            onBack={() => setCurrentScreen('home')}
-          />
-        );
+        return <CaseIntelligenceReport onViewPDF={() => setCurrentScreen('pdf')} onBack={() => setCurrentScreen('home')} />;
+      case 'pdf':
+        return <PDFPreview onBack={() => setCurrentScreen('report')} />;
       default:
-        return (
-          <Home 
-            onNavigate={(screen) => setCurrentScreen(screen as Screen)} 
-            onToggleTheme={toggleTheme} 
-            isDark={isDark} 
-          />
-        );
+        return <HomeCapture onStartRecording={() => setCurrentScreen('recording')} />;
     }
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-gray-50 dark:bg-gray-950 relative">
+    <div className="min-h-screen">
       {renderScreen()}
     </div>
   );
