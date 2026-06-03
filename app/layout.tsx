@@ -1,21 +1,14 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: "ClinIQ - O Shazam da Consulta Médica",
-  description: "Toque. Consulte. Receba o caso reconstruído.",
-};
+  title: 'ClinIQ v9 - Clinical Detective',
+  description: 'ClinIQ — o Shazam da consulta médica com Clinical Detective e dossiê premium.'
+}
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">
-        {children}
-      </body>
+      <body style={{ margin: 0, background: '#0f172a' }}>{children}</body>
     </html>
-  );
+  )
 }

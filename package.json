@@ -1,6 +1,6 @@
 {
-  "name": "cliniq-shazam-redesign",
-  "version": "2.0.0",
+  "name": "cliniq-clinical-detective-v9",
+  "version": "9.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
