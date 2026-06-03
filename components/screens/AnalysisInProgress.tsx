@@ -1,394 +1,408 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { 
-  Check, 
-  Loader2, 
-  Brain, 
-  Mic, 
-  FileText, 
-  Search, 
-  GitBranch, 
-  AlertTriangle, 
-  Lightbulb, 
-  FileStack,
-  Stethoscope,
-  Pill,
-  Activity,
-  Clock
-} from 'lucide-react';
+import { Check, FileText, Clock, Sparkles } from 'lucide-react';
 
 interface AnalysisInProgressProps {
   onComplete: () => void;
 }
 
-interface ReasoningStep {
-  id: string;
-  label: string;
-  description: string;
-  icon: React.ElementType;
-  duration: number;
-}
-
 interface Discovery {
   id: string;
-  type: 'finding' | 'pattern' | 'alert' | 'insight';
+  type: 'finding' | 'correlation' | 'alert' | 'gap' | 'insight';
   title: string;
   detail: string;
   source: string;
-  timestamp: string;
+  position: { x: number; y: number };
 }
 
+const clinicalMessages = [
+  'Reconstruindo a conversa clínica',
+  'Identificando padrões relevantes',
+  'Comparando informações entre fontes',
+  'Correlacionando achados clínicos',
+  'Construindo timeline clínica',
+  'Detectando inconsistências',
+  'Mapeando medicações ativas',
+  'Preparando dossiê inteligente',
+];
+
 export default function AnalysisInProgress({ onComplete }: AnalysisInProgressProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [currentMessage, setCurrentMessage] = useState(0);
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
-  const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
+  const [pulseIntensity, setPulseIntensity] = useState(1);
+  const [showRings, setShowRings] = useState(false);
+  const [particleCount, setParticleCount] = useState(8);
 
-  const steps: ReasoningStep[] = [
-    { 
-      id: 'transcribe',
-      label: 'Transcrevendo consulta', 
-      description: 'Convertendo áudio em texto clínico estruturado',
-      icon: Mic, 
-      duration: 2000 
-    },
-    { 
-      id: 'structure',
-      label: 'Compreendendo narrativa clínica', 
-      description: 'Identificando queixas, histórico e contexto',
-      icon: Stethoscope, 
-      duration: 1800 
-    },
-    { 
-      id: 'documents',
-      label: 'Analisando documentos', 
-      description: 'Extraindo dados de laudos e relatórios',
-      icon: FileText, 
-      duration: 2200 
-    },
-    { 
-      id: 'medications',
-      label: 'Mapeando medicações', 
-      description: 'Identificando tratamentos ativos e histórico',
-      icon: Pill, 
-      duration: 1500 
-    },
-    { 
-      id: 'timeline',
-      label: 'Construindo linha do tempo', 
-      description: 'Organizando eventos cronologicamente',
-      icon: GitBranch, 
-      duration: 1800 
-    },
-    { 
-      id: 'patterns',
-      label: 'Detectando padrões clínicos', 
-      description: 'Correlacionando achados e identificando tendências',
-      icon: Search, 
-      duration: 2500 
-    },
-    { 
-      id: 'gaps',
-      label: 'Identificando lacunas', 
-      description: 'Buscando informações faltantes ou inconsistentes',
-      icon: AlertTriangle, 
-      duration: 1600 
-    },
-    { 
-      id: 'synthesis',
-      label: 'Sintetizando dossiê clínico', 
-      description: 'Preparando relatório premium para revisão',
-      icon: FileStack, 
-      duration: 2000 
-    },
-  ];
-
-  const potentialDiscoveries: Discovery[] = [
+  const allDiscoveries: Omit<Discovery, 'position'>[] = [
     {
       id: 'd1',
       type: 'finding',
-      title: 'Cefaleia progressiva há 3 meses',
-      detail: 'Paciente relata piora matinal, intensidade crescente',
+      title: 'Queixa principal identificada',
+      detail: 'Cefaleia progressiva há 3 meses com piora matinal',
       source: 'Consulta 03:42',
-      timestamp: '03:42',
     },
     {
       id: 'd2',
-      type: 'pattern',
-      title: 'Tendência de queda da hemoglobina',
-      detail: 'Hb 12.8 → 11.8 g/dL em 6 meses',
-      source: 'Hemograma 14/03',
-      timestamp: '',
+      type: 'finding',
+      title: 'Histórico medicamentoso detectado',
+      detail: 'Losartana 50mg/dia há 8 anos',
+      source: 'Consulta 08:42',
     },
     {
       id: 'd3',
-      type: 'alert',
-      title: 'Lesão em RM sem caracterização',
-      detail: 'Achado frontoparietal 1.2cm necessita contraste',
-      source: 'RM crânio p.2',
-      timestamp: '',
+      type: 'finding',
+      title: 'Exames laboratoriais reconhecidos',
+      detail: 'Hemograma com tendência de queda da Hb',
+      source: 'Hemograma 14/03',
     },
     {
       id: 'd4',
-      type: 'finding',
-      title: 'Histórico familiar de AVC',
-      detail: 'Mãe com AVC aos 68 anos',
-      source: 'Consulta 15:20',
-      timestamp: '15:20',
+      type: 'correlation',
+      title: 'Correlação encontrada',
+      detail: 'Sintoma + achado de imagem sugerem investigação neurológica',
+      source: 'Correlação ClinIQ',
     },
     {
       id: 'd5',
-      type: 'insight',
-      title: 'Sintomas podem estar correlacionados',
-      detail: 'Cefaleia + tontura + achado de imagem sugere investigação neurológica prioritária',
-      source: 'Correlação ClinIQ',
-      timestamp: '',
+      type: 'gap',
+      title: 'Lacuna clínica detectada',
+      detail: 'RM sem contraste - caracterização incompleta',
+      source: 'RM crânio p.2',
     },
     {
       id: 'd6',
-      type: 'pattern',
-      title: 'HAS em tratamento há 8 anos',
-      detail: 'Losartana 50mg/dia - adesão a confirmar',
-      source: 'Consulta 08:42',
-      timestamp: '08:42',
+      type: 'alert',
+      title: 'Inconsistência encontrada',
+      detail: 'Paciente nega medicação contínua, mas histórico menciona losartana',
+      source: 'Consulta vs Histórico',
+    },
+    {
+      id: 'd7',
+      type: 'insight',
+      title: 'Dossiê sendo estruturado',
+      detail: '4 problemas, 11 achados, 5 perguntas identificadas',
+      source: 'Síntese ClinIQ',
     },
   ];
 
+  const getDiscoveryPosition = (index: number): { x: number; y: number } => {
+    const positions = [
+      { x: -120, y: -180 },
+      { x: 120, y: -160 },
+      { x: -140, y: -40 },
+      { x: 140, y: -20 },
+      { x: -110, y: 100 },
+      { x: 120, y: 120 },
+      { x: 0, y: 180 },
+    ];
+    return positions[index % positions.length];
+  };
+
+  const getDiscoveryStyle = (type: Discovery['type']) => {
+    const styles = {
+      finding: { bg: 'bg-cyan-500/20', border: 'border-cyan-500/30', text: 'text-cyan-400', icon: 'bg-cyan-500/30' },
+      correlation: { bg: 'bg-purple-500/20', border: 'border-purple-500/30', text: 'text-purple-400', icon: 'bg-purple-500/30' },
+      alert: { bg: 'bg-amber-500/20', border: 'border-amber-500/30', text: 'text-amber-400', icon: 'bg-amber-500/30' },
+      gap: { bg: 'bg-rose-500/20', border: 'border-rose-500/30', text: 'text-rose-400', icon: 'bg-rose-500/30' },
+      insight: { bg: 'bg-emerald-500/20', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: 'bg-emerald-500/30' },
+    };
+    return styles[type];
+  };
+
   const memoizedOnComplete = useCallback(onComplete, [onComplete]);
 
+  // Progress and discoveries
   useEffect(() => {
-    if (currentStep < steps.length) {
-      const timer = setTimeout(() => {
-        setCompletedSteps(prev => [...prev, steps[currentStep].id]);
-        setCurrentStep(prev => prev + 1);
-        
-        // Add discoveries at specific steps
-        if (currentStep === 1 && discoveries.length === 0) {
-          setShowDiscoveryPanel(true);
-          setDiscoveries([potentialDiscoveries[0]]);
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(progressInterval);
+          setTimeout(() => memoizedOnComplete(), 1500);
+          return 100;
         }
-        if (currentStep === 2) {
-          setDiscoveries(prev => [...prev, potentialDiscoveries[1], potentialDiscoveries[2]]);
-        }
-        if (currentStep === 4) {
-          setDiscoveries(prev => [...prev, potentialDiscoveries[3], potentialDiscoveries[5]]);
-        }
-        if (currentStep === 5) {
-          setDiscoveries(prev => [...prev, potentialDiscoveries[4]]);
-        }
-      }, steps[currentStep]?.duration || 1500);
+        return prev + 0.8;
+      });
+    }, 120);
 
-      return () => clearTimeout(timer);
-    } else {
-      const timer = setTimeout(() => {
-        memoizedOnComplete();
-      }, 1200);
-      return () => clearTimeout(timer);
+    return () => clearInterval(progressInterval);
+  }, [memoizedOnComplete]);
+
+  // Message rotation
+  useEffect(() => {
+    const messageInterval = setInterval(() => {
+      setCurrentMessage(prev => (prev + 1) % clinicalMessages.length);
+    }, 3000);
+
+    return () => clearInterval(messageInterval);
+  }, []);
+
+  // Discovery appearances
+  useEffect(() => {
+    const thresholds = [10, 25, 40, 55, 70, 82, 95];
+    const currentIndex = thresholds.filter(t => progress >= t).length;
+    
+    if (currentIndex > discoveries.length && currentIndex <= allDiscoveries.length) {
+      const newDiscovery = {
+        ...allDiscoveries[currentIndex - 1],
+        position: getDiscoveryPosition(currentIndex - 1),
+      };
+      setDiscoveries(prev => [...prev, newDiscovery]);
+      
+      // Pulse effect on discovery
+      setPulseIntensity(1.8);
+      setTimeout(() => setPulseIntensity(1), 600);
+      
+      // Show rings on important discoveries
+      if (newDiscovery.type === 'correlation' || newDiscovery.type === 'alert') {
+        setShowRings(true);
+        setParticleCount(16);
+        setTimeout(() => {
+          setShowRings(false);
+          setParticleCount(8);
+        }, 1200);
+      }
     }
-  }, [currentStep, memoizedOnComplete, steps, discoveries.length, potentialDiscoveries]);
-
-  const getDiscoveryIcon = (type: Discovery['type']) => {
-    const icons = {
-      finding: Activity,
-      pattern: Search,
-      alert: AlertTriangle,
-      insight: Lightbulb,
-    };
-    return icons[type];
-  };
-
-  const getDiscoveryColor = (type: Discovery['type']) => {
-    const colors = {
-      finding: 'text-primary-500 bg-primary-50 dark:bg-primary-900/20',
-      pattern: 'text-[--color-clinical-teal] bg-[--color-clinical-teal]/10',
-      alert: 'text-[--color-clinical-amber] bg-[--color-clinical-amber]/10',
-      insight: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20',
-    };
-    return colors[type];
-  };
-
-  const progress = Math.round((completedSteps.length / steps.length) * 100);
+  }, [progress, discoveries.length]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col overflow-hidden">
+      {/* Ambient background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 left-1/3 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-3xl" />
+      </div>
+
       {/* Header */}
-      <div className="px-4 pt-14 pb-6">
-        <div className="flex items-center justify-center mb-6">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary-100 to-primary-50 dark:from-primary-900/40 dark:to-primary-900/20 flex items-center justify-center">
-              <Brain size={36} className="text-primary-600 dark:text-primary-400" />
-            </div>
-            <div className="absolute inset-0 rounded-3xl animate-pulse bg-primary-500/10" />
-          </div>
-        </div>
-
-        <h1 className="text-2xl font-semibold text-center text-gray-900 dark:text-white mb-1">
-          Compreendendo o caso
-        </h1>
-        <p className="text-center text-gray-500 dark:text-gray-400 text-sm">
-          Inteligência clínica em ação
+      <div className="relative z-10 px-6 pt-16 pb-4">
+        <p className="text-cyan-400 text-xs font-medium tracking-widest uppercase text-center mb-2">
+          ClinIQ Intelligence
         </p>
-
-        {/* Progress Bar */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
-            <span>Progresso</span>
-            <span>{progress}%</span>
-          </div>
-          <div className="h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-primary-500 to-[--color-clinical-teal] transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
+        <h1 className="text-2xl font-semibold text-white text-center mb-1">
+          {clinicalMessages[currentMessage]}
+        </h1>
+        <p className="text-slate-400 text-sm text-center">
+          {progress < 100 ? 'O ClinIQ está reconstruindo o caso clínico' : 'Dossiê pronto para revisão'}
+        </p>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 px-4 pb-8">
-        <div className="grid gap-4">
-          {/* Reasoning Steps */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-ios overflow-hidden">
-            <div className="p-4 border-b border-gray-100 dark:border-gray-800">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Raciocínio Clínico
-              </h3>
-            </div>
-            <div className="p-3 space-y-1">
-              {steps.map((step, index) => {
-                const StepIcon = step.icon;
-                const isComplete = completedSteps.includes(step.id);
-                const isCurrent = index === currentStep && currentStep < steps.length;
-
-                return (
-                  <div
-                    key={step.id}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
-                      isCurrent
-                        ? 'bg-primary-50 dark:bg-primary-900/20'
-                        : isComplete
-                        ? 'bg-gray-50 dark:bg-gray-950'
-                        : 'opacity-40'
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
-                        isComplete
-                          ? 'bg-[--color-clinical-green]/10 dark:bg-[--color-clinical-green]/20'
-                          : isCurrent
-                          ? 'bg-primary-500'
-                          : 'bg-gray-200 dark:bg-gray-800'
-                      }`}
-                    >
-                      {isComplete ? (
-                        <Check size={16} className="text-[--color-clinical-green]" />
-                      ) : isCurrent ? (
-                        <Loader2 size={16} className="text-white animate-spin" />
-                      ) : (
-                        <StepIcon size={16} className="text-gray-400 dark:text-gray-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span
-                        className={`text-sm font-medium block ${
-                          isCurrent || isComplete
-                            ? 'text-gray-900 dark:text-white'
-                            : 'text-gray-400 dark:text-gray-600'
-                        }`}
-                      >
-                        {step.label}
-                      </span>
-                      {isCurrent && (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {step.description}
-                        </span>
-                      )}
-                    </div>
+      {/* Central Orb Area */}
+      <div className="flex-1 relative flex items-center justify-center">
+        {/* Floating Discoveries */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {discoveries.map((discovery, index) => {
+            const style = getDiscoveryStyle(discovery.type);
+            return (
+              <div
+                key={discovery.id}
+                className={`absolute ${style.bg} ${style.border} border backdrop-blur-md rounded-xl p-3 max-w-[160px] animate-in fade-in zoom-in duration-700`}
+                style={{
+                  transform: `translate(${discovery.position.x}px, ${discovery.position.y}px)`,
+                  animationDelay: `${index * 100}ms`,
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  <div className={`w-6 h-6 rounded-lg ${style.icon} flex items-center justify-center flex-shrink-0`}>
+                    <Check size={12} className={style.text} />
                   </div>
-                );
-              })}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-medium ${style.text}`}>
+                      {discovery.title}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">
+                      {discovery.detail}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 mt-2 pt-2 border-t border-white/5">
+                  <FileText size={8} className="text-slate-500" />
+                  <span className="text-[9px] text-slate-500">{discovery.source}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* The Orb */}
+        <div className="relative">
+          {/* Outer rings - appear on important discoveries */}
+          {showRings && (
+            <>
+              <div className="absolute inset-0 -m-16 rounded-full border border-cyan-500/20 animate-ping" style={{ animationDuration: '2s' }} />
+              <div className="absolute inset-0 -m-12 rounded-full border border-purple-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+              <div className="absolute inset-0 -m-8 rounded-full border border-cyan-500/30 animate-ping" style={{ animationDuration: '1s' }} />
+            </>
+          )}
+
+          {/* Orbital rings */}
+          <div 
+            className="absolute inset-0 -m-10 rounded-full border border-dashed border-cyan-500/10"
+            style={{ animation: 'spin 20s linear infinite' }}
+          />
+          <div 
+            className="absolute inset-0 -m-16 rounded-full border border-dashed border-purple-500/10"
+            style={{ animation: 'spin 30s linear infinite reverse' }}
+          />
+          <div 
+            className="absolute inset-0 -m-24 rounded-full border border-dashed border-cyan-500/5"
+            style={{ animation: 'spin 40s linear infinite' }}
+          />
+
+          {/* Particles */}
+          {[...Array(particleCount)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-1.5 h-1.5 rounded-full bg-cyan-400/60"
+              style={{
+                top: '50%',
+                left: '50%',
+                transform: `rotate(${(360 / particleCount) * i}deg) translateY(-${80 + Math.random() * 40}px)`,
+                animation: `pulse ${2 + Math.random()}s ease-in-out infinite`,
+                animationDelay: `${Math.random() * 2}s`,
+              }}
+            />
+          ))}
+
+          {/* Glow layers */}
+          <div 
+            className="absolute inset-0 -m-8 rounded-full bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-2xl transition-transform duration-500"
+            style={{ transform: `scale(${pulseIntensity})` }}
+          />
+          <div 
+            className="absolute inset-0 -m-4 rounded-full bg-gradient-to-br from-cyan-500/30 to-purple-500/30 blur-xl transition-transform duration-500"
+            style={{ transform: `scale(${pulseIntensity * 0.9})` }}
+          />
+
+          {/* Main orb */}
+          <div 
+            className="relative w-40 h-40 rounded-full transition-transform duration-500"
+            style={{ transform: `scale(${0.95 + pulseIntensity * 0.05})` }}
+          >
+            {/* Gradient background */}
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 border border-white/10" />
+            
+            {/* Inner glow */}
+            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10" />
+            
+            {/* Waveform animation */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-1">
+                {[...Array(7)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-gradient-to-t from-cyan-500 to-purple-500 rounded-full"
+                    style={{
+                      height: `${20 + Math.sin((Date.now() / 200) + i) * 15}px`,
+                      animation: `waveform ${0.5 + i * 0.1}s ease-in-out infinite alternate`,
+                      animationDelay: `${i * 0.1}s`,
+                    }}
+                  />
+                ))}
+              </div>
             </div>
+
+            {/* Surface highlight */}
+            <div className="absolute top-4 left-4 w-16 h-16 rounded-full bg-gradient-to-br from-white/10 to-transparent blur-sm" />
+            
+            {/* Progress ring */}
+            <svg className="absolute inset-0 w-full h-full -rotate-90">
+              <circle
+                cx="80"
+                cy="80"
+                r="76"
+                fill="none"
+                stroke="rgba(6, 182, 212, 0.1)"
+                strokeWidth="2"
+              />
+              <circle
+                cx="80"
+                cy="80"
+                r="76"
+                fill="none"
+                stroke="url(#progressGradient)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 76}`}
+                strokeDashoffset={`${2 * Math.PI * 76 * (1 - progress / 100)}`}
+                className="transition-all duration-300"
+              />
+              <defs>
+                <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#06b6d4" />
+                  <stop offset="100%" stopColor="#a855f7" />
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
 
-          {/* Discovery Panel */}
-          {showDiscoveryPanel && (
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="p-4 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <Lightbulb size={16} className="text-[--color-clinical-amber]" />
-                  <h3 className="text-sm font-semibold text-white">
-                    Descobertas em Tempo Real
-                  </h3>
-                  <span className="ml-auto text-xs text-gray-400 bg-white/10 px-2 py-0.5 rounded-full">
-                    {discoveries.length} encontradas
-                  </span>
-                </div>
-              </div>
-              
-              <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
-                {discoveries.map((discovery, index) => {
-                  const DiscoveryIcon = getDiscoveryIcon(discovery.type);
-                  const colorClass = getDiscoveryColor(discovery.type);
-                  
-                  return (
-                    <div
-                      key={discovery.id}
-                      className="bg-white/5 rounded-xl p-3 animate-in fade-in slide-in-from-left-2 duration-300"
-                      style={{ animationDelay: `${index * 100}ms` }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-lg ${colorClass} flex items-center justify-center flex-shrink-0`}>
-                          <DiscoveryIcon size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white">
-                            {discovery.title}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {discovery.detail}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                              <FileText size={10} />
-                              {discovery.source}
-                            </span>
-                            {discovery.timestamp && (
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                <Clock size={10} />
-                                {discovery.timestamp}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Completion Message */}
-          {completedSteps.length === steps.length && (
-            <div className="bg-[--color-clinical-green]/10 dark:bg-[--color-clinical-green]/20 rounded-2xl p-5 animate-in fade-in zoom-in duration-500">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-[--color-clinical-green]/20 flex items-center justify-center">
-                  <Check size={24} className="text-[--color-clinical-green]" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Análise concluída
-                  </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Preparando seu dossiê clínico...
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Progress text */}
+          <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
+            <span className="text-3xl font-light text-white tabular-nums">
+              {Math.round(progress)}%
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* Bottom Stats */}
+      <div className="relative z-10 px-6 pb-10 pt-4">
+        <div className="flex items-center justify-center gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+            <span className="text-xs text-slate-400">
+              {discoveries.length} descobertas
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Sparkles size={12} className="text-purple-400" />
+            <span className="text-xs text-slate-400">
+              Inteligência ativa
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock size={12} className="text-slate-500" />
+            <span className="text-xs text-slate-400">
+              ~{Math.max(1, Math.round((100 - progress) / 10))}min
+            </span>
+          </div>
+        </div>
+
+        {/* Completion Message */}
+        {progress >= 100 && (
+          <div className="mt-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 animate-in fade-in zoom-in duration-500">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <Check size={20} className="text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white">
+                  Caso reconstruído
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Abrindo dossiê clínico...
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CSS Animations */}
+      <style jsx>{`
+        @keyframes waveform {
+          0% { height: 15px; }
+          100% { height: 35px; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; transform: rotate(var(--rotation)) translateY(var(--distance)) scale(1); }
+          50% { opacity: 1; transform: rotate(var(--rotation)) translateY(var(--distance)) scale(1.5); }
+        }
+      `}</style>
     </div>
   );
 }
