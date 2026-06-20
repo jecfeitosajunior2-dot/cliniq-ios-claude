@@ -14,3 +14,7 @@ node_modules
 .next/
 .DS_Store
 .vercel
+
+# TS build info
+tsconfig.tsbuildinfo
+*.tsbuildinfo

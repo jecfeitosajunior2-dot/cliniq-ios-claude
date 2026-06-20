@@ -50,7 +50,7 @@ export default function Home({ onNavigate, onToggleTheme, isDark }: HomeProps) {
       <div className="flex-1 flex flex-col items-center justify-center px-6 -mt-8">
         {/* Esfera principal */}
         <button
-          onClick={() => onNavigate('recording')}
+          onClick={() => onNavigate('consent')}
           className="relative group mb-8"
           style={{ transform: `scale(${pulseScale})`, transition: 'transform 2s ease-in-out' }}
         >

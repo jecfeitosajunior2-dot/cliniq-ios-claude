@@ -7,6 +7,7 @@ interface CompleteCaseProps {
   onSubmit: () => void;
   onBack: () => void;
   recordingDuration?: number;
+  audioUrl?: string;
 }
 
 interface UploadedFile {
@@ -17,7 +18,7 @@ interface UploadedFile {
   status: 'ready' | 'processing';
 }
 
-export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0 }: CompleteCaseProps) {
+export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, audioUrl }: CompleteCaseProps) {
   const [patientName, setPatientName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'M' | 'F' | ''>('');
@@ -113,12 +114,23 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0 }
               <div className="flex items-center gap-3 mt-1 text-xs text-emerald-600/70 dark:text-emerald-400/70">
                 <span className="flex items-center gap-1">
                   <Clock size={12} />
-                  {formatDuration(recordingDuration || 342)}
+                  {formatDuration(recordingDuration)}
                 </span>
-                <span>2 vozes detectadas</span>
+                <span>Pronto para transcricao</span>
               </div>
             </div>
           </div>
+
+          {/* Player do audio real capturado */}
+          {audioUrl && (
+            <audio
+              controls
+              src={audioUrl}
+              className="w-full mt-3 h-9"
+            >
+              Seu navegador nao suporta a reproducao de audio.
+            </audio>
+          )}
         </div>
       </div>
 

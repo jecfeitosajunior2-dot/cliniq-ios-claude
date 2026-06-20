@@ -2,17 +2,20 @@
 
 import { useState } from 'react';
 import Home from '@/components/screens/Home';
+import ConsentGate from '@/components/screens/ConsentGate';
 import Recording from '@/components/screens/Recording';
 import CompleteCase from '@/components/screens/CompleteCase';
 import AnalysisInProgress from '@/components/screens/AnalysisInProgress';
 import CaseIntelligenceReport from '@/components/screens/CaseIntelligenceReport';
+import type { RecordingResult } from '@/lib/useAudioRecorder';
 
-type Screen = 'home' | 'recording' | 'complete' | 'analysis' | 'report';
+type Screen = 'home' | 'consent' | 'recording' | 'complete' | 'analysis' | 'report';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [isDark, setIsDark] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recording, setRecording] = useState<RecordingResult | null>(null);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
@@ -23,7 +26,12 @@ export default function App() {
     }
   };
 
-  const handleRecordingComplete = () => {
+  const handleRecordingComplete = (result: RecordingResult) => {
+    setRecording((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return result;
+    });
+    setRecordingDuration(result.durationSec);
     setCurrentScreen('complete');
   };
 
@@ -45,19 +53,27 @@ export default function App() {
             isDark={isDark} 
           />
         );
+      case 'consent':
+        return (
+          <ConsentGate
+            onConsent={() => setCurrentScreen('recording')}
+            onCancel={() => setCurrentScreen('home')}
+          />
+        );
       case 'recording':
         return (
-          <Recording 
+          <Recording
             onComplete={handleRecordingComplete}
             onCancel={() => setCurrentScreen('home')}
           />
         );
       case 'complete':
         return (
-          <CompleteCase 
+          <CompleteCase
             onSubmit={handleCaseSubmit}
             onBack={() => setCurrentScreen('home')}
             recordingDuration={recordingDuration}
+            audioUrl={recording?.url}
           />
         );
       case 'analysis':
