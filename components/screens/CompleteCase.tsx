@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, FileText, FlaskConical, Image, Upload, Check, Sparkles, X, Clock, Mic } from 'lucide-react';
+import type { CaseData } from '@/lib/types';
 
 interface CompleteCaseProps {
-  onSubmit: () => void;
+  onSubmit: (data: CaseData) => void;
   onBack: () => void;
   recordingDuration?: number;
   audioUrl?: string;
@@ -335,7 +336,9 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, 
       {/* Footer fixo */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800 max-w-md mx-auto">
         <button
-          onClick={onSubmit}
+          onClick={() =>
+            onSubmit({ patientName, age, gender, specialty, chiefComplaint, objective })
+          }
           disabled={!isFormValid}
           className={`w-full py-4 rounded-2xl font-semibold text-base flex items-center justify-center gap-2 transition-all ${
             isFormValid

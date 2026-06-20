@@ -20,25 +20,64 @@ import {
   GitBranch,
   Zap,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  Captions
 } from 'lucide-react';
 import { useState } from 'react';
+import type { CaseData, TranscriptionResult } from '@/lib/types';
 
 interface CaseIntelligenceReportProps {
   onBack: () => void;
+  caseData?: CaseData | null;
+  transcription?: TranscriptionResult | null;
 }
 
-export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceReportProps) {
+const OBJECTIVE_LABELS: Record<string, string> = {
+  consultation: 'Consulta padrao',
+  'second-opinion': 'Segunda opiniao',
+  followup: 'Retorno / Acompanhamento',
+  referral: 'Encaminhamento',
+};
+
+function initialsFrom(name: string): string {
+  const letters = (name || '').replace(/[^A-Za-zÀ-ÿ]/g, '').toUpperCase();
+  return letters.slice(0, 2) || 'PT';
+}
+
+function formatTimestamp(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+export default function CaseIntelligenceReport({ onBack, caseData, transcription }: CaseIntelligenceReportProps) {
   const [activeSection, setActiveSection] = useState('detective');
 
   const sections = [
     { id: 'detective', label: 'Detective', icon: Search },
+    { id: 'transcricao', label: 'Transcricao', icon: Captions },
     { id: 'resumo', label: 'Resumo', icon: FileText },
     { id: 'timeline', label: 'Timeline', icon: GitBranch },
     { id: 'problemas', label: 'Problemas', icon: Target },
     { id: 'lacunas', label: 'Lacunas', icon: AlertCircle },
     { id: 'proximos', label: 'Acoes', icon: ArrowRight },
   ];
+
+  // Cabecalho real do paciente (cai no exemplo so se nao houver caso informado)
+  const patientInitials = caseData ? initialsFrom(caseData.patientName) : 'MS';
+  const patientLine = caseData
+    ? `${caseData.patientName || 'Paciente'}${caseData.age ? `, ${caseData.age} anos` : ''}`
+    : 'M.S., 62 anos';
+  const patientMeta = caseData
+    ? [
+        caseData.gender === 'F' ? 'Feminino' : caseData.gender === 'M' ? 'Masculino' : null,
+        caseData.specialty || null,
+        OBJECTIVE_LABELS[caseData.objective] || null,
+      ]
+        .filter(Boolean)
+        .join(' • ')
+    : 'Feminino • Neurologia • Segunda opiniao';
 
   // Clinical Detective - achados cruzados
   const detectiveFindings = [
@@ -204,14 +243,14 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
           {/* Paciente */}
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 flex items-center justify-center">
-              <span className="text-base font-semibold text-white">MS</span>
+              <span className="text-base font-semibold text-white">{patientInitials}</span>
             </div>
             <div>
               <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-                M.S., 62 anos
+                {patientLine}
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Feminino • Neurologia • Segunda opiniao
+                {patientMeta}
               </p>
             </div>
           </div>
@@ -345,6 +384,69 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* TRANSCRICAO (real) */}
+        {activeSection === 'transcricao' && (
+          <div className="space-y-4">
+            {transcription && transcription.segments.length > 0 ? (
+              <>
+                {/* Resumo da transcricao + custo (semente do item 4) */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Captions size={16} className="text-sky-500" />
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Transcricao da consulta
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      {transcription.segments.length} trechos
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      {formatTimestamp(transcription.durationSec)} de audio
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      PT-BR
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300">
+                      ~US$ {transcription.cost.usd.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Trechos com timestamp clicavel-ready (evidencia rastreavel) */}
+                <div className="space-y-2">
+                  {transcription.segments.map((seg) => (
+                    <div
+                      key={seg.id}
+                      className="bg-white dark:bg-gray-900 rounded-xl p-3 border border-gray-200 dark:border-gray-800 flex gap-3"
+                    >
+                      <span className="text-xs font-medium text-sky-600 dark:text-sky-400 tabular-nums pt-0.5 flex-shrink-0">
+                        {formatTimestamp(seg.start)}
+                      </span>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {seg.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : transcription ? (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                  {transcription.text || 'A transcricao retornou vazia.'}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 text-center">
+                <Captions size={28} className="text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Nenhuma transcricao disponivel para este caso.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
