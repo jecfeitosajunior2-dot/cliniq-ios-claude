@@ -24,12 +24,13 @@ import {
   Captions
 } from 'lucide-react';
 import { useState } from 'react';
-import type { CaseData, TranscriptionResult } from '@/lib/types';
+import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
 
 interface CaseIntelligenceReportProps {
   onBack: () => void;
   caseData?: CaseData | null;
   transcription?: TranscriptionResult | null;
+  intelligence?: CaseIntelligence | null;
 }
 
 const OBJECTIVE_LABELS: Record<string, string> = {
@@ -51,7 +52,58 @@ function formatTimestamp(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-export default function CaseIntelligenceReport({ onBack, caseData, transcription }: CaseIntelligenceReportProps) {
+// Exemplos exibidos apenas quando o relatório é aberto sem uma análise real
+// (ex.: a partir de "casos recentes"). Casos reais vêm do claude-opus-4-8.
+const EXAMPLE_FINDINGS: import('@/lib/types').DetectiveFinding[] = [
+  {
+    id: 'pattern-temporal',
+    type: 'pattern',
+    title: 'Padrao temporal detectado',
+    conclusion: 'A cefaleia evoluiu de episodica para progressiva em aproximadamente 6 semanas.',
+    whyItMatters: 'Mudanca de padrao pode indicar sinal de alerta neurologico.',
+    confidence: 'alta',
+    nextAction: 'Considerar avaliacao neurologica prioritaria e RM com contraste',
+    evidence: [
+      { source: 'Consulta', timestamp: '02:14', quote: 'antes era de vez em quando, agora e todo dia' },
+      { source: 'Consulta', timestamp: '15:32', quote: 'comecei a ter tontura tambem' },
+    ],
+  },
+  {
+    id: 'inconsistency-med',
+    type: 'inconsistency',
+    title: 'Inconsistencia medicamentosa',
+    conclusion: 'Paciente informou nao usar medicacao continua, mas o histórico menciona losartana.',
+    whyItMatters: 'Divergencia pode alterar interpretacao de PA e adesao terapeutica.',
+    confidence: 'media-alta',
+    nextAction: 'Confirmar lista real de medicamentos, dose e adesao',
+    evidence: [
+      { source: 'Consulta', timestamp: '04:32', quote: 'nao tomo remedio nenhum continuo' },
+    ],
+  },
+];
+
+const EXAMPLE_PROBLEMS: import('@/lib/types').CaseProblem[] = [
+  { title: 'Cefaleia progressiva de padrao preocupante', priority: 'critical', status: 'Investigacao urgente', summary: 'Evolucao de 3 meses com piora matinal.' },
+  { title: 'HAS em tratamento', priority: 'moderate', status: 'Avaliar controle', summary: 'Adesao a confirmar.' },
+];
+
+const EXAMPLE_GAPS: import('@/lib/types').CaseGap[] = [
+  { question: 'Houve inicio subito ou piora abrupta da cefaleia?', impact: 'Muda urgencia', priority: 'critical' },
+  { question: 'Presenca de deficit motor, sensitivo ou visual?', impact: 'Indica focal', priority: 'critical' },
+];
+
+const EXAMPLE_NEXT_STEPS: import('@/lib/types').NextStep[] = [
+  { action: 'RM cranio com contraste', urgency: 'Urgente', reason: 'Caracterizar lesao' },
+  { action: 'Avaliacao neurologica completa', urgency: 'Urgente', reason: 'Sinais focais' },
+];
+
+const EXAMPLE_TIMELINE: import('@/lib/types').TimelineEvent[] = [
+  { date: '3 meses atras', event: 'Inicio da cefaleia episodica', type: 'symptom' },
+  { date: '6 semanas atras', event: 'Cefaleia torna-se progressiva', type: 'worsening' },
+  { date: 'Hoje', event: 'Consulta atual', type: 'consultation' },
+];
+
+export default function CaseIntelligenceReport({ onBack, caseData, transcription, intelligence }: CaseIntelligenceReportProps) {
   const [activeSection, setActiveSection] = useState('detective');
 
   const sections = [
@@ -79,116 +131,18 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
         .join(' • ')
     : 'Feminino • Neurologia • Segunda opiniao';
 
-  // Clinical Detective - achados cruzados
-  const detectiveFindings = [
-    {
-      id: 'pattern-temporal',
-      type: 'pattern',
-      title: 'Padrao temporal detectado',
-      conclusion: 'A cefaleia evoluiu de episodica para progressiva em aproximadamente 6 semanas.',
-      whyItMatters: 'Mudanca de padrao pode indicar sinal de alerta neurologico e justificar investigacao prioritaria.',
-      evidence: [
-        { source: 'Consulta', timestamp: '02:14', label: 'Relato de evolucao' },
-        { source: 'RM cranio', page: '2', label: 'Achado compativel' },
-        { source: 'Consulta', timestamp: '15:32', label: 'Tontura recente' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Considerar avaliacao neurologica prioritaria e RM com contraste',
-    },
-    {
-      id: 'inconsistency-med',
-      type: 'inconsistency',
-      title: 'Inconsistencia medicamentosa',
-      conclusion: 'Paciente informou nao usar medicacao continua, mas documento anterior menciona losartana.',
-      whyItMatters: 'Divergencia pode alterar interpretacao de PA, adesao terapeutica e risco cardiovascular.',
-      evidence: [
-        { source: 'Consulta', timestamp: '04:32', label: 'Nega medicacao' },
-        { source: 'Historico clinico', page: '1', label: 'Losartana 50mg' },
-        { source: 'Triagem atual', label: 'PA 148/92 mmHg' },
-      ],
-      confidence: 'media-alta',
-      nextAction: 'Confirmar lista real de medicamentos, dose, adesao e interrupcoes',
-    },
-    {
-      id: 'correlation-lab',
-      type: 'correlation',
-      title: 'Correlacao laboratorial relevante',
-      conclusion: 'Hemoglobina caiu em exames sucessivos e pode se relacionar com queixa de cansaco.',
-      whyItMatters: 'Anemia progressiva pode explicar sintomas e exigir investigacao etiologica.',
-      evidence: [
-        { source: 'Hemograma anterior', label: 'Hb 13.1 g/dL' },
-        { source: 'Hemograma atual', label: 'Hb 10.4 g/dL' },
-        { source: 'Consulta', timestamp: '05:18', label: 'Relata fadiga' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Investigar sangramentos, dieta, anti-inflamatorios e exames complementares',
-    },
-    {
-      id: 'gap-critical',
-      type: 'gap',
-      title: 'Lacuna clinica critica',
-      conclusion: 'Nao ha documentacao clara sobre inicio subito, deficit focal ou sinais neurologicos de alarme.',
-      whyItMatters: 'Essas respostas podem mudar prioridade de encaminhamento e conduta.',
-      evidence: [
-        { source: 'Consulta', label: 'Sem resposta clara' },
-        { source: 'RM', label: 'Achado nao caracterizado' },
-        { source: 'Exame neurologico', label: 'Nao documentado' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Perguntar sobre fraqueza, alteracao visual, fala, marcha e vomitos',
-    },
-  ];
+  // Dados reais do dossiê (claude-opus-4-8). Exemplo só quando não há análise.
+  const detectiveFindings = intelligence?.detectiveFindings ?? EXAMPLE_FINDINGS;
+  const problems = intelligence?.problems ?? EXAMPLE_PROBLEMS;
+  const gaps = intelligence?.gaps ?? EXAMPLE_GAPS;
+  const nextSteps = intelligence?.nextSteps ?? EXAMPLE_NEXT_STEPS;
+  const timelineEvents = intelligence?.timeline ?? EXAMPLE_TIMELINE;
 
-  const problems = [
-    {
-      title: 'Cefaleia progressiva de padrao preocupante',
-      priority: 'critical',
-      status: 'Investigacao urgente',
-      summary: 'Evolucao de 3 meses com piora matinal e intensidade crescente.',
-    },
-    {
-      title: 'Lesao encefalica nao caracterizada',
-      priority: 'critical',
-      status: 'Requer contraste',
-      summary: 'Achado frontoparietal E 1.2cm em T2/FLAIR.',
-    },
-    {
-      title: 'Anemia em investigacao',
-      priority: 'moderate',
-      status: 'Acompanhar tendencia',
-      summary: 'Hb 10.4 g/dL com queda progressiva.',
-    },
-    {
-      title: 'HAS em tratamento',
-      priority: 'moderate',
-      status: 'Avaliar controle',
-      summary: 'Losartana 50mg - adesao a confirmar.',
-    },
-  ];
-
-  const gaps = [
-    { question: 'Houve inicio subito ou piora abrupta da cefaleia?', impact: 'Muda urgencia', priority: 'critical' },
-    { question: 'Presenca de deficit motor, sensitivo ou visual?', impact: 'Indica focal', priority: 'critical' },
-    { question: 'Historia de vomitos em jato ou alteracao de consciencia?', impact: 'Sinal de alarme', priority: 'high' },
-    { question: 'Uso recente de anti-inflamatorios ou anticoagulantes?', impact: 'Explica anemia', priority: 'moderate' },
-    { question: 'Adesao real ao tratamento anti-hipertensivo?', impact: 'Risco CV', priority: 'moderate' },
-  ];
-
-  const nextSteps = [
-    { action: 'RM cranio com contraste gadolinio', urgency: 'Urgente', reason: 'Caracterizar lesao' },
-    { action: 'Avaliacao neurologica completa', urgency: 'Urgente', reason: 'Sinais focais' },
-    { action: 'Hemograma de controle + ferritina + reticulocitos', urgency: 'Breve', reason: 'Investigar anemia' },
-    { action: 'Revisao medicamentosa detalhada', urgency: 'Proxima consulta', reason: 'Adesao e interacoes' },
-    { action: 'MAPA 24h', urgency: 'Eletivo', reason: 'Avaliar controle PA' },
-  ];
-
-  const timelineEvents = [
-    { date: '3 meses atras', event: 'Inicio da cefaleia episodica', type: 'symptom' },
-    { date: '6 semanas atras', event: 'Cefaleia torna-se progressiva', type: 'worsening' },
-    { date: '2 semanas atras', event: 'Inicio de tontura intermitente', type: 'symptom' },
-    { date: '1 semana atras', event: 'RM cranio realizada', type: 'exam' },
-    { date: 'Hoje', event: 'Consulta atual', type: 'consultation' },
-  ];
+  // Contagem real por tipo de achado (cabeçalho do Detective)
+  const typeCounts = detectiveFindings.reduce<Record<string, number>>((acc, f) => {
+    acc[f.type] = (acc[f.type] || 0) + 1;
+    return acc;
+  }, {});
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -296,25 +250,24 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
                 </div>
               </div>
               <p className="text-sm text-gray-300 leading-relaxed">
-                O ClinIQ analisou audio, documentos e exames para encontrar padroes, inconsistencias e lacunas que merecem atencao.
+                O ClinIQ analisou o áudio da consulta para encontrar padroes, inconsistencias, correlacoes e lacunas — cada conclusao com evidencia rastreavel ate o timestamp do audio.
               </p>
-              <div className="flex items-center gap-4 mt-4">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-violet-400" />
-                  <span className="text-xs text-gray-400">1 padrao</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span className="text-xs text-gray-400">1 inconsistencia</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-gray-400">1 correlacao</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-rose-400" />
-                  <span className="text-xs text-gray-400">1 lacuna</span>
-                </div>
+              <div className="flex flex-wrap items-center gap-4 mt-4">
+                {[
+                  { type: 'pattern', color: 'bg-violet-400', label: 'padrao', plural: 'padroes' },
+                  { type: 'inconsistency', color: 'bg-amber-400', label: 'inconsistencia', plural: 'inconsistencias' },
+                  { type: 'correlation', color: 'bg-emerald-400', label: 'correlacao', plural: 'correlacoes' },
+                  { type: 'gap', color: 'bg-rose-400', label: 'lacuna', plural: 'lacunas' },
+                ]
+                  .filter((t) => (typeCounts[t.type] || 0) > 0)
+                  .map((t) => (
+                    <div key={t.type} className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${t.color}`} />
+                      <span className="text-xs text-gray-400">
+                        {typeCounts[t.type]} {typeCounts[t.type] === 1 ? t.label : t.plural}
+                      </span>
+                    </div>
+                  ))}
               </div>
             </div>
 
@@ -359,18 +312,23 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
                   </p>
                 </div>
 
-                {/* Evidencias */}
+                {/* Evidencias rastreaveis: timestamp do audio -> trecho citado */}
                 <div className="mb-3">
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 block">Evidencias</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-1.5">
                     {finding.evidence.map((ev, i) => (
-                      <span
+                      <div
                         key={i}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
+                        className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
                       >
-                        <FileText size={10} />
-                        {ev.source} {ev.timestamp && `${ev.timestamp}`} {ev.page && `p.${ev.page}`}
-                      </span>
+                        <span className="inline-flex items-center gap-1 font-medium text-sky-600 dark:text-sky-400 tabular-nums flex-shrink-0">
+                          <Clock size={10} />
+                          {ev.timestamp || ev.source}
+                        </span>
+                        {ev.quote && (
+                          <span className="italic text-gray-600 dark:text-gray-400">“{ev.quote}”</span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -458,11 +416,9 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
                 <Clock size={14} className="text-gray-400" />
                 <span className="text-xs text-gray-500">Leitura em 30 segundos</span>
               </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                Paciente feminina, 62 anos, apresenta quadro de <strong>cefaleia progressiva ha 3 meses</strong>, com caracteristica de piora matinal e intensidade crescente. RM de cranio evidencia <strong>lesao frontoparietal esquerda de 1.2cm</strong> nao caracterizada, necessitando estudo com contraste.
-              </p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mt-3">
-                Concomitantemente, apresenta <strong>anemia em investigacao</strong> (Hb 10.4 g/dL) com queda progressiva e <strong>HAS em tratamento</strong> com possivel baixa adesao. O conjunto de achados sugere investigacao neurologica prioritaria.
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {intelligence?.summary ??
+                  'Paciente feminina, 62 anos, com cefaleia progressiva ha 3 meses, piora matinal e intensidade crescente. RM de cranio com lesao frontoparietal esquerda nao caracterizada. Anemia em investigacao e HAS em tratamento. O conjunto sugere investigacao neurologica prioritaria.'}
               </p>
             </div>
 

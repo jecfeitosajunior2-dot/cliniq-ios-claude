@@ -3,30 +3,41 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, FileText, Clock, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { transcribeAudio } from '@/lib/transcribe';
+import { runDetective } from '@/lib/detective';
 import type { RecordingResult } from '@/lib/useAudioRecorder';
-import type { TranscriptionResult } from '@/lib/types';
+import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
 
 interface AnalysisInProgressProps {
   recording: RecordingResult | null;
-  onComplete: (result: TranscriptionResult) => void;
+  caseData: CaseData | null;
+  onComplete: (transcription: TranscriptionResult, intelligence: CaseIntelligence) => void;
   onCancel: () => void;
 }
 
-// Estágios reais do pipeline de transcrição (sem prometer análise clínica ainda).
-const pipelineMessages = [
+type Phase = 'transcribe' | 'detective';
+
+const TRANSCRIBE_MESSAGES = [
   'Enviando áudio com segurança',
   'Transcrevendo em português',
-  'Reconhecendo termos clínicos',
   'Sincronizando timestamps',
-  'Organizando a transcrição',
 ];
 
-interface Stage {
-  id: string;
-  label: string;
-  position: { x: number; y: number };
-}
+const DETECTIVE_MESSAGES = [
+  'Investigando padrões clínicos',
+  'Cruzando evidências do áudio',
+  'Detectando inconsistências',
+  'Montando o dossiê',
+];
 
+// Chips reveladas conforme o progresso (estágios reais do pipeline)
+const STAGE_LABELS = [
+  'Áudio transcrito (PT-BR)',
+  'Timestamps sincronizados',
+  'Padrões clínicos investigados',
+  'Evidências cruzadas',
+  'Dossiê montado',
+];
+const STAGE_THRESHOLDS = [30, 48, 70, 88, 100];
 const stagePositions = [
   { x: -120, y: -170 },
   { x: 125, y: -150 },
@@ -35,11 +46,19 @@ const stagePositions = [
   { x: 0, y: 175 },
 ];
 
+interface Stage {
+  id: string;
+  label: string;
+  position: { x: number; y: number };
+}
+
 export default function AnalysisInProgress({
   recording,
+  caseData,
   onComplete,
   onCancel,
 }: AnalysisInProgressProps) {
+  const [phase, setPhase] = useState<Phase>('transcribe');
   const [progress, setProgress] = useState(0);
   const [currentMessage, setCurrentMessage] = useState(0);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -47,69 +66,90 @@ export default function AnalysisInProgress({
   const [showRings, setShowRings] = useState(false);
   const [particleCount, setParticleCount] = useState(8);
   const [error, setError] = useState<string | null>(null);
-  const [segmentsCount, setSegmentsCount] = useState<number | null>(null);
+  const [findingsCount, setFindingsCount] = useState<number | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
-  // Transcrição real
+  // Pipeline real: transcrição -> Clinical Detective
   useEffect(() => {
     if (!recording) {
-      setError('Nenhum áudio para transcrever. Volte e grave a consulta.');
+      setError('Nenhum áudio para analisar. Volte e grave a consulta.');
       return;
     }
     let cancelled = false;
     setError(null);
     setProgress(0);
+    setPhase('transcribe');
 
-    transcribeAudio(recording.blob, recording.mimeType, recording.durationSec)
-      .then((result) => {
+    (async () => {
+      try {
+        const transcription = await transcribeAudio(
+          recording.blob,
+          recording.mimeType,
+          recording.durationSec,
+        );
         if (cancelled) return;
-        setSegmentsCount(result.segments.length);
+
+        setPhase('detective');
+        setProgress((p) => Math.max(p, 52));
+
+        const intelligence = await runDetective(transcription, caseData);
+        if (cancelled) return;
+
+        setFindingsCount(intelligence.detectiveFindings.length);
         setProgress(100);
         setShowRings(true);
         setParticleCount(16);
         setTimeout(() => {
-          if (!cancelled) onCompleteRef.current(result);
+          if (!cancelled) onCompleteRef.current(transcription, intelligence);
         }, 1300);
-      })
-      .catch((e: unknown) => {
+      } catch (e: unknown) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Falha na transcrição.');
-      });
+        setError(e instanceof Error ? e.message : 'Falha na análise.');
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [recording, retryKey]);
+  }, [recording, caseData, retryKey]);
 
-  // Progresso "respira" até ~90% enquanto aguarda a resposta real; 100% ao concluir.
+  // Progresso "respira" até o teto da fase; 100% só ao concluir o dossiê.
   useEffect(() => {
     if (error) return;
+    const ceiling = phase === 'transcribe' ? 48 : 95;
     const id = setInterval(() => {
-      setProgress((p) => (p >= 100 ? 100 : p < 90 ? p + Math.max(0.4, (90 - p) * 0.035) : p));
+      setProgress((p) => {
+        if (p >= 100) return 100;
+        if (p >= ceiling) return p;
+        return p + Math.max(0.35, (ceiling - p) * 0.03);
+      });
     }, 120);
     return () => clearInterval(id);
-  }, [error, retryKey]);
+  }, [error, phase]);
 
-  // Rotação das mensagens
+  // Mensagens da fase atual
+  const phaseMessages = phase === 'transcribe' ? TRANSCRIBE_MESSAGES : DETECTIVE_MESSAGES;
+  useEffect(() => {
+    setCurrentMessage(0);
+  }, [phase]);
   useEffect(() => {
     const id = setInterval(() => {
-      setCurrentMessage((p) => (p + 1) % pipelineMessages.length);
+      setCurrentMessage((p) => (p + 1) % phaseMessages.length);
     }, 2600);
     return () => clearInterval(id);
-  }, []);
+  }, [phaseMessages.length]);
 
-  // Revela chips de estágio conforme o progresso avança (estágios reais do pipeline)
+  // Revela chips conforme o progresso
   useEffect(() => {
-    const thresholds = [12, 32, 52, 72, 100];
-    const reached = thresholds.filter((t) => progress >= t).length;
-    if (reached > stages.length && reached <= pipelineMessages.length) {
+    const reached = STAGE_THRESHOLDS.filter((t) => progress >= t).length;
+    if (reached > stages.length && reached <= STAGE_LABELS.length) {
       const idx = reached - 1;
       setStages((prev) => [
         ...prev,
-        { id: `s${idx}`, label: pipelineMessages[idx], position: stagePositions[idx] },
+        { id: `s${idx}`, label: STAGE_LABELS[idx], position: stagePositions[idx] },
       ]);
       setPulseIntensity(1.7);
       setTimeout(() => setPulseIntensity(1), 600);
@@ -123,9 +163,7 @@ export default function AnalysisInProgress({
         <div className="w-16 h-16 rounded-2xl bg-rose-500/15 flex items-center justify-center mb-5">
           <AlertTriangle size={30} className="text-rose-400" />
         </div>
-        <h2 className="text-lg font-semibold text-white mb-2">
-          Não foi possível transcrever
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-2">Não foi possível analisar</h2>
         <p className="text-sm text-slate-400 mb-8 max-w-xs leading-relaxed">{error}</p>
         <div className="flex items-center gap-3">
           <button
@@ -133,6 +171,7 @@ export default function AnalysisInProgress({
               setError(null);
               setStages([]);
               setProgress(0);
+              setPhase('transcribe');
               setRetryKey((k) => k + 1);
             }}
             className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-slate-900 text-sm font-medium active:scale-95 transition-transform"
@@ -151,6 +190,8 @@ export default function AnalysisInProgress({
     );
   }
 
+  const done = progress >= 100;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex flex-col overflow-hidden">
       {/* Ambient background */}
@@ -162,15 +203,17 @@ export default function AnalysisInProgress({
       {/* Header */}
       <div className="relative z-10 px-6 pt-16 pb-4">
         <p className="text-cyan-400 text-xs font-medium tracking-widest uppercase text-center mb-2">
-          ClinIQ Transcrição
+          {phase === 'transcribe' ? 'ClinIQ Transcrição' : 'ClinIQ Clinical Detective'}
         </p>
         <h1 className="text-2xl font-semibold text-white text-center mb-1">
-          {progress >= 100 ? 'Transcrição concluída' : pipelineMessages[currentMessage]}
+          {done ? 'Dossiê pronto' : phaseMessages[currentMessage]}
         </h1>
         <p className="text-slate-400 text-sm text-center">
-          {progress < 100
-            ? 'Convertendo o áudio da consulta em texto PT-BR'
-            : 'Abrindo a transcrição...'}
+          {done
+            ? 'Abrindo o Case Intelligence...'
+            : phase === 'transcribe'
+              ? 'Convertendo o áudio da consulta em texto PT-BR'
+              : 'Analisando com claude-opus-4-8 e evidências rastreáveis'}
         </p>
       </div>
 
@@ -281,9 +324,7 @@ export default function AnalysisInProgress({
 
           {/* Progress text */}
           <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <span className="text-3xl font-light text-white tabular-nums">
-              {Math.round(progress)}%
-            </span>
+            <span className="text-3xl font-light text-white tabular-nums">{Math.round(progress)}%</span>
           </div>
         </div>
       </div>
@@ -294,7 +335,7 @@ export default function AnalysisInProgress({
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
             <span className="text-xs text-slate-400">
-              {stages.length} de {pipelineMessages.length} etapas
+              {stages.length} de {STAGE_LABELS.length} etapas
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -303,23 +344,25 @@ export default function AnalysisInProgress({
           </div>
           <div className="flex items-center gap-2">
             <Clock size={12} className="text-slate-500" />
-            <span className="text-xs text-slate-400">Whisper</span>
+            <span className="text-xs text-slate-400">
+              {phase === 'transcribe' ? 'Whisper' : 'Opus 4.8'}
+            </span>
           </div>
         </div>
 
         {/* Completion Message */}
-        {progress >= 100 && (
+        {done && (
           <div className="mt-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 animate-in fade-in zoom-in duration-500">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
                 <FileText size={20} className="text-emerald-400" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-white">Transcrição pronta</h4>
+                <h4 className="text-sm font-semibold text-white">Case Intelligence pronto</h4>
                 <p className="text-xs text-slate-400">
-                  {segmentsCount !== null
-                    ? `${segmentsCount} trechos com timestamps`
-                    : 'Abrindo a transcrição...'}
+                  {findingsCount !== null
+                    ? `${findingsCount} achados com evidências rastreáveis`
+                    : 'Abrindo o dossiê...'}
                 </p>
               </div>
             </div>

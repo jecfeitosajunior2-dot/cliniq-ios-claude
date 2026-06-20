@@ -8,7 +8,7 @@ import CompleteCase from '@/components/screens/CompleteCase';
 import AnalysisInProgress from '@/components/screens/AnalysisInProgress';
 import CaseIntelligenceReport from '@/components/screens/CaseIntelligenceReport';
 import type { RecordingResult } from '@/lib/useAudioRecorder';
-import type { CaseData, TranscriptionResult } from '@/lib/types';
+import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
 
 type Screen = 'home' | 'consent' | 'recording' | 'complete' | 'analysis' | 'report';
 
@@ -19,6 +19,7 @@ export default function App() {
   const [recording, setRecording] = useState<RecordingResult | null>(null);
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [transcription, setTranscription] = useState<TranscriptionResult | null>(null);
+  const [intelligence, setIntelligence] = useState<CaseIntelligence | null>(null);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
@@ -43,8 +44,12 @@ export default function App() {
     setCurrentScreen('analysis');
   };
 
-  const handleAnalysisComplete = (result: TranscriptionResult) => {
+  const handleAnalysisComplete = (
+    result: TranscriptionResult,
+    intel: CaseIntelligence,
+  ) => {
     setTranscription(result);
+    setIntelligence(intel);
     setCurrentScreen('report');
   };
 
@@ -85,6 +90,7 @@ export default function App() {
         return (
           <AnalysisInProgress
             recording={recording}
+            caseData={caseData}
             onComplete={handleAnalysisComplete}
             onCancel={() => setCurrentScreen('complete')}
           />
@@ -95,6 +101,7 @@ export default function App() {
             onBack={() => setCurrentScreen('home')}
             caseData={caseData}
             transcription={transcription}
+            intelligence={intelligence}
           />
         );
       default:
