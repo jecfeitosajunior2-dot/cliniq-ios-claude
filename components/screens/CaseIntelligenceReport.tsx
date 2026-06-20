@@ -21,10 +21,20 @@ import {
   Zap,
   Eye,
   CheckCircle2,
-  Captions
+  Captions,
+  Wallet,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { useState } from 'react';
 import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
+import {
+  aggregateCost,
+  computeMargin,
+  DEFAULT_PLAN_PRICE_BRL,
+  DEFAULT_ANALYSES_PER_MONTH,
+  USD_TO_BRL,
+} from '@/lib/cost';
 
 interface CaseIntelligenceReportProps {
   onBack: () => void;
@@ -105,6 +115,11 @@ const EXAMPLE_TIMELINE: import('@/lib/types').TimelineEvent[] = [
 
 export default function CaseIntelligenceReport({ onBack, caseData, transcription, intelligence }: CaseIntelligenceReportProps) {
   const [activeSection, setActiveSection] = useState('detective');
+  const [analysesPerMonth, setAnalysesPerMonth] = useState(DEFAULT_ANALYSES_PER_MONTH);
+
+  // Custo e margem unitária desta análise (item 4)
+  const cost = aggregateCost(transcription ?? null, intelligence ?? null);
+  const margin = computeMargin(cost.totalBrl, DEFAULT_PLAN_PRICE_BRL, analysesPerMonth);
 
   const sections = [
     { id: 'detective', label: 'Detective', icon: Search },
@@ -114,6 +129,7 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
     { id: 'problemas', label: 'Problemas', icon: Target },
     { id: 'lacunas', label: 'Lacunas', icon: AlertCircle },
     { id: 'proximos', label: 'Acoes', icon: ArrowRight },
+    { id: 'margem', label: 'Margem', icon: Wallet },
   ];
 
   // Cabecalho real do paciente (cai no exemplo so se nao houver caso informado)
@@ -591,6 +607,149 @@ export default function CaseIntelligenceReport({ onBack, caseData, transcription
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* MARGEM UNITARIA (interno — item 4) */}
+        {activeSection === 'margem' && (
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-4">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                  <Wallet size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-white">Margem unitária</h2>
+                  <p className="text-xs text-gray-400">Visão interna · custo por análise</p>
+                </div>
+              </div>
+            </div>
+
+            {!cost.hasData ? (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 text-center">
+                <Wallet size={28} className="text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Sem dados de custo para este caso (exemplo). Gere uma análise real para ver a margem.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Quebra de custo */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 space-y-3">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Custo desta análise</span>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Captions size={14} className="text-sky-500" />
+                      <span className="text-gray-700 dark:text-gray-300">
+                        Transcrição
+                        <span className="text-gray-400 dark:text-gray-500">
+                          {' '}· {cost.audioMinutes.toFixed(1)} min (Whisper)
+                        </span>
+                      </span>
+                    </div>
+                    <span className="tabular-nums text-gray-900 dark:text-white">
+                      US$ {cost.transcriptionUsd.toFixed(4)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Search size={14} className="text-amber-500" />
+                      <span className="text-gray-700 dark:text-gray-300">
+                        Clinical Detective
+                        <span className="text-gray-400 dark:text-gray-500">
+                          {' '}· {cost.inputTokens.toLocaleString('pt-BR')} in / {cost.outputTokens.toLocaleString('pt-BR')} out (Opus 4.8)
+                        </span>
+                      </span>
+                    </div>
+                    <span className="tabular-nums text-gray-900 dark:text-white">
+                      US$ {cost.detectiveUsd.toFixed(4)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <span className="font-medium text-gray-900 dark:text-white">Total</span>
+                    <span className="tabular-nums font-semibold text-gray-900 dark:text-white">
+                      US$ {cost.totalUsd.toFixed(4)} · R$ {cost.totalBrl.toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    Câmbio assumido: US$ 1 = R$ {USD_TO_BRL.toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
+
+                {/* Premissa de volume */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Consultas por mês</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
+                      {analysesPerMonth}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={10}
+                    max={300}
+                    step={5}
+                    value={analysesPerMonth}
+                    onChange={(e) => setAnalysesPerMonth(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Plano Solo R$ {DEFAULT_PLAN_PRICE_BRL}/mês ÷ {analysesPerMonth} consultas ={' '}
+                    <strong className="text-gray-700 dark:text-gray-300">
+                      R$ {margin.revenuePerAnalysisBrl.toFixed(2).replace('.', ',')}
+                    </strong>{' '}
+                    de receita por análise.
+                  </p>
+                </div>
+
+                {/* Margem */}
+                <div
+                  className={`rounded-2xl p-4 border ${
+                    margin.marginBrl >= 0
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      {margin.marginBrl >= 0 ? (
+                        <TrendingUp size={16} className="text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <TrendingDown size={16} className="text-rose-600 dark:text-rose-400" />
+                      )}
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Margem unitária
+                      </span>
+                    </div>
+                    <span
+                      className={`text-xs font-semibold tabular-nums ${
+                        margin.marginBrl >= 0
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-rose-700 dark:text-rose-300'
+                      }`}
+                    >
+                      {margin.marginPct.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div
+                    className={`text-2xl font-semibold tabular-nums ${
+                      margin.marginBrl >= 0
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}
+                  >
+                    R$ {margin.marginBrl.toFixed(2).replace('.', ',')}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Receita R$ {margin.revenuePerAnalysisBrl.toFixed(2).replace('.', ',')} − custo R${' '}
+                    {margin.costBrl.toFixed(2).replace('.', ',')} por análise.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
