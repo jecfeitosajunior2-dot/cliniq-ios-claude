@@ -11,19 +11,35 @@ function extForMime(mime: string): string {
   return 'webm';
 }
 
-/** Envia o áudio capturado para a rota de transcrição e devolve o resultado real. */
+/**
+ * Envia o áudio para a rota de transcrição e devolve o resultado real.
+ *
+ * Se `audioUrl` é fornecida (áudio já no Storage), manda só a URL em JSON — o
+ * servidor baixa o arquivo, contornando o limite de corpo da Vercel. Caso
+ * contrário, faz upload direto via multipart (modo local / áudios curtos).
+ */
 export async function transcribeAudio(
   blob: Blob,
   mimeType: string,
   durationSec: number,
+  audioUrl?: string | null,
 ): Promise<TranscriptionResult> {
   const filename = `consulta.${extForMime(mimeType)}`;
-  const form = new FormData();
-  form.append('audio', blob, filename);
-  form.append('filename', filename);
-  form.append('durationSec', String(durationSec));
 
-  const resp = await fetch('/api/transcribe', { method: 'POST', body: form });
+  let resp: Response;
+  if (audioUrl) {
+    resp = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioUrl, durationSec, filename }),
+    });
+  } else {
+    const form = new FormData();
+    form.append('audio', blob, filename);
+    form.append('filename', filename);
+    form.append('durationSec', String(durationSec));
+    resp = await fetch('/api/transcribe', { method: 'POST', body: form });
+  }
 
   if (!resp.ok) {
     let message = 'Falha na transcrição.';

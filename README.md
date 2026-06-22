@@ -24,6 +24,29 @@ Este projeto está preparado para publicação no Vercel com Next.js. A experiê
 
 3. Acesse `http://localhost:3000`. O fluxo de gravação (Home → Consentimento → Gravação) funciona sem nenhuma chave, pois `localhost` é um contexto seguro para `getUserMedia`. Transcrição e Clinical Detective exigem as chaves acima; sem elas, a tela de análise mostra um erro com opção de tentar novamente, em vez de falhar silenciosamente.
 
+## Backend (Supabase) — auth, persistência e storage
+
+Sem o Supabase, o app roda em **modo local/demo**: tudo funciona, mas nada é salvo
+e a Home mostra casos de exemplo. Com o Supabase configurado, o app exige login,
+salva cada consulta do médico e sobe o áudio para um bucket privado (contornando o
+limite de ~4,5 MB de corpo de requisição da Vercel em consultas longas).
+
+Para ativar:
+
+1. Crie um projeto em [supabase.com](https://supabase.com) e copie, em
+   **Project Settings → API**, a `Project URL` e a `anon public key`.
+2. Defina as variáveis (local em `.env.local`, ou em Vercel → Environment Variables):
+
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+   ```
+
+3. No **SQL Editor** do Supabase, rode o conteúdo de
+   [`lib/supabase/schema.sql`](lib/supabase/schema.sql) uma vez. Ele cria a tabela
+   `cases`, a tabela `profiles`, o bucket `consultations` e todas as políticas de
+   RLS (cada médico só enxerga os próprios pacientes — exigência da LGPD).
+
 ## Comandos
 
 ```bash

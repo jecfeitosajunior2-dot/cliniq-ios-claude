@@ -27,25 +27,66 @@ export async function POST(req: Request) {
     );
   }
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json(
-      { error: 'Requisição inválida (esperado multipart/form-data).' },
-      { status: 400 },
-    );
+  let audio: Blob;
+  let clientDuration = 0;
+  let filename = 'consulta.webm';
+
+  const contentType = req.headers.get('content-type') ?? '';
+
+  if (contentType.includes('application/json')) {
+    // Caminho do Storage: o áudio já foi para o Supabase (sem passar pela
+    // Vercel), então recebemos só uma URL assinada e buscamos server-side.
+    // Isso evita o limite de ~4,5MB de corpo de requisição da Vercel.
+    let body: { audioUrl?: string; durationSec?: number; filename?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'JSON inválido.' }, { status: 400 });
+    }
+    if (!body.audioUrl) {
+      return NextResponse.json({ error: 'audioUrl ausente.' }, { status: 400 });
+    }
+    clientDuration = Number(body.durationSec) || 0;
+    if (body.filename) filename = body.filename;
+    try {
+      const audioResp = await fetch(body.audioUrl);
+      if (!audioResp.ok) {
+        return NextResponse.json(
+          { error: `Não consegui baixar o áudio do storage (${audioResp.status}).` },
+          { status: 502 },
+        );
+      }
+      audio = await audioResp.blob();
+    } catch {
+      return NextResponse.json(
+        { error: 'Falha de rede ao baixar o áudio do storage.' },
+        { status: 502 },
+      );
+    }
+  } else {
+    // Caminho direto (multipart): áudios curtos, modo local sem Storage.
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return NextResponse.json(
+        { error: 'Requisição inválida (esperado multipart/form-data ou JSON).' },
+        { status: 400 },
+      );
+    }
+    const field = form.get('audio');
+    if (!(field instanceof Blob) || field.size === 0) {
+      return NextResponse.json({ error: 'Áudio ausente ou vazio.' }, { status: 400 });
+    }
+    audio = field;
+    clientDuration = Number(form.get('durationSec')) || 0;
+    const filenameField = form.get('filename');
+    if (typeof filenameField === 'string' && filenameField) filename = filenameField;
   }
 
-  const audio = form.get('audio');
-  if (!(audio instanceof Blob) || audio.size === 0) {
-    return NextResponse.json({ error: 'Áudio ausente ou vazio.' }, { status: 400 });
+  if (audio.size === 0) {
+    return NextResponse.json({ error: 'Áudio vazio.' }, { status: 400 });
   }
-
-  const clientDuration = Number(form.get('durationSec')) || 0;
-  const filenameField = form.get('filename');
-  const filename =
-    typeof filenameField === 'string' && filenameField ? filenameField : 'consulta.webm';
 
   // Encaminha ao provedor de transcrição (OpenAI Whisper).
   const upstream = new FormData();

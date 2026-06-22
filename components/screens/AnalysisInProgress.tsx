@@ -4,13 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, FileText, Clock, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { transcribeAudio } from '@/lib/transcribe';
 import { runDetective } from '@/lib/detective';
+import { uploadAudio } from '@/lib/audio-upload';
 import type { RecordingResult } from '@/lib/useAudioRecorder';
 import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
 
 interface AnalysisInProgressProps {
   recording: RecordingResult | null;
   caseData: CaseData | null;
-  onComplete: (transcription: TranscriptionResult, intelligence: CaseIntelligence) => void;
+  onComplete: (
+    transcription: TranscriptionResult,
+    intelligence: CaseIntelligence,
+    audioPath: string | null,
+  ) => void;
   onCancel: () => void;
 }
 
@@ -85,10 +90,16 @@ export default function AnalysisInProgress({
 
     (async () => {
       try {
+        // Sobe o áudio ao Storage (se houver backend) para contornar o limite
+        // de corpo da Vercel; o path fica guardado no caso.
+        const uploaded = await uploadAudio(recording.blob, recording.mimeType);
+        if (cancelled) return;
+
         const transcription = await transcribeAudio(
           recording.blob,
           recording.mimeType,
           recording.durationSec,
+          uploaded?.signedUrl ?? null,
         );
         if (cancelled) return;
 
@@ -103,7 +114,9 @@ export default function AnalysisInProgress({
         setShowRings(true);
         setParticleCount(16);
         setTimeout(() => {
-          if (!cancelled) onCompleteRef.current(transcription, intelligence);
+          if (!cancelled) {
+            onCompleteRef.current(transcription, intelligence, uploaded?.path ?? null);
+          }
         }, 1300);
       } catch (e: unknown) {
         if (cancelled) return;
