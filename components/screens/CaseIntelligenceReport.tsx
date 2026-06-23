@@ -20,136 +20,145 @@ import {
   GitBranch,
   Zap,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  Captions,
+  Wallet,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { useState } from 'react';
+import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
+import {
+  aggregateCost,
+  computeMargin,
+  DEFAULT_PLAN_PRICE_BRL,
+  DEFAULT_ANALYSES_PER_MONTH,
+  USD_TO_BRL,
+} from '@/lib/cost';
 
 interface CaseIntelligenceReportProps {
   onBack: () => void;
+  caseData?: CaseData | null;
+  transcription?: TranscriptionResult | null;
+  intelligence?: CaseIntelligence | null;
 }
 
-export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceReportProps) {
+const OBJECTIVE_LABELS: Record<string, string> = {
+  consultation: 'Consulta padrao',
+  'second-opinion': 'Segunda opiniao',
+  followup: 'Retorno / Acompanhamento',
+  referral: 'Encaminhamento',
+};
+
+function initialsFrom(name: string): string {
+  const letters = (name || '').replace(/[^A-Za-zÀ-ÿ]/g, '').toUpperCase();
+  return letters.slice(0, 2) || 'PT';
+}
+
+function formatTimestamp(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Exemplos exibidos apenas quando o relatório é aberto sem uma análise real
+// (ex.: a partir de "casos recentes"). Casos reais vêm do claude-opus-4-8.
+const EXAMPLE_FINDINGS: import('@/lib/types').DetectiveFinding[] = [
+  {
+    id: 'pattern-temporal',
+    type: 'pattern',
+    title: 'Padrao temporal detectado',
+    conclusion: 'A cefaleia evoluiu de episodica para progressiva em aproximadamente 6 semanas.',
+    whyItMatters: 'Mudanca de padrao pode indicar sinal de alerta neurologico.',
+    confidence: 'alta',
+    nextAction: 'Considerar avaliacao neurologica prioritaria e RM com contraste',
+    evidence: [
+      { source: 'Consulta', timestamp: '02:14', quote: 'antes era de vez em quando, agora e todo dia' },
+      { source: 'Consulta', timestamp: '15:32', quote: 'comecei a ter tontura tambem' },
+    ],
+  },
+  {
+    id: 'inconsistency-med',
+    type: 'inconsistency',
+    title: 'Inconsistencia medicamentosa',
+    conclusion: 'Paciente informou nao usar medicacao continua, mas o histórico menciona losartana.',
+    whyItMatters: 'Divergencia pode alterar interpretacao de PA e adesao terapeutica.',
+    confidence: 'media-alta',
+    nextAction: 'Confirmar lista real de medicamentos, dose e adesao',
+    evidence: [
+      { source: 'Consulta', timestamp: '04:32', quote: 'nao tomo remedio nenhum continuo' },
+    ],
+  },
+];
+
+const EXAMPLE_PROBLEMS: import('@/lib/types').CaseProblem[] = [
+  { title: 'Cefaleia progressiva de padrao preocupante', priority: 'critical', status: 'Investigacao urgente', summary: 'Evolucao de 3 meses com piora matinal.' },
+  { title: 'HAS em tratamento', priority: 'moderate', status: 'Avaliar controle', summary: 'Adesao a confirmar.' },
+];
+
+const EXAMPLE_GAPS: import('@/lib/types').CaseGap[] = [
+  { question: 'Houve inicio subito ou piora abrupta da cefaleia?', impact: 'Muda urgencia', priority: 'critical' },
+  { question: 'Presenca de deficit motor, sensitivo ou visual?', impact: 'Indica focal', priority: 'critical' },
+];
+
+const EXAMPLE_NEXT_STEPS: import('@/lib/types').NextStep[] = [
+  { action: 'RM cranio com contraste', urgency: 'Urgente', reason: 'Caracterizar lesao' },
+  { action: 'Avaliacao neurologica completa', urgency: 'Urgente', reason: 'Sinais focais' },
+];
+
+const EXAMPLE_TIMELINE: import('@/lib/types').TimelineEvent[] = [
+  { date: '3 meses atras', event: 'Inicio da cefaleia episodica', type: 'symptom' },
+  { date: '6 semanas atras', event: 'Cefaleia torna-se progressiva', type: 'worsening' },
+  { date: 'Hoje', event: 'Consulta atual', type: 'consultation' },
+];
+
+export default function CaseIntelligenceReport({ onBack, caseData, transcription, intelligence }: CaseIntelligenceReportProps) {
   const [activeSection, setActiveSection] = useState('detective');
+  const [analysesPerMonth, setAnalysesPerMonth] = useState(DEFAULT_ANALYSES_PER_MONTH);
+
+  // Custo e margem unitária desta análise (item 4)
+  const cost = aggregateCost(transcription ?? null, intelligence ?? null);
+  const margin = computeMargin(cost.totalBrl, DEFAULT_PLAN_PRICE_BRL, analysesPerMonth);
 
   const sections = [
     { id: 'detective', label: 'Detective', icon: Search },
+    { id: 'transcricao', label: 'Transcricao', icon: Captions },
     { id: 'resumo', label: 'Resumo', icon: FileText },
     { id: 'timeline', label: 'Timeline', icon: GitBranch },
     { id: 'problemas', label: 'Problemas', icon: Target },
     { id: 'lacunas', label: 'Lacunas', icon: AlertCircle },
     { id: 'proximos', label: 'Acoes', icon: ArrowRight },
+    { id: 'margem', label: 'Margem', icon: Wallet },
   ];
 
-  // Clinical Detective - achados cruzados
-  const detectiveFindings = [
-    {
-      id: 'pattern-temporal',
-      type: 'pattern',
-      title: 'Padrao temporal detectado',
-      conclusion: 'A cefaleia evoluiu de episodica para progressiva em aproximadamente 6 semanas.',
-      whyItMatters: 'Mudanca de padrao pode indicar sinal de alerta neurologico e justificar investigacao prioritaria.',
-      evidence: [
-        { source: 'Consulta', timestamp: '02:14', label: 'Relato de evolucao' },
-        { source: 'RM cranio', page: '2', label: 'Achado compativel' },
-        { source: 'Consulta', timestamp: '15:32', label: 'Tontura recente' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Considerar avaliacao neurologica prioritaria e RM com contraste',
-    },
-    {
-      id: 'inconsistency-med',
-      type: 'inconsistency',
-      title: 'Inconsistencia medicamentosa',
-      conclusion: 'Paciente informou nao usar medicacao continua, mas documento anterior menciona losartana.',
-      whyItMatters: 'Divergencia pode alterar interpretacao de PA, adesao terapeutica e risco cardiovascular.',
-      evidence: [
-        { source: 'Consulta', timestamp: '04:32', label: 'Nega medicacao' },
-        { source: 'Historico clinico', page: '1', label: 'Losartana 50mg' },
-        { source: 'Triagem atual', label: 'PA 148/92 mmHg' },
-      ],
-      confidence: 'media-alta',
-      nextAction: 'Confirmar lista real de medicamentos, dose, adesao e interrupcoes',
-    },
-    {
-      id: 'correlation-lab',
-      type: 'correlation',
-      title: 'Correlacao laboratorial relevante',
-      conclusion: 'Hemoglobina caiu em exames sucessivos e pode se relacionar com queixa de cansaco.',
-      whyItMatters: 'Anemia progressiva pode explicar sintomas e exigir investigacao etiologica.',
-      evidence: [
-        { source: 'Hemograma anterior', label: 'Hb 13.1 g/dL' },
-        { source: 'Hemograma atual', label: 'Hb 10.4 g/dL' },
-        { source: 'Consulta', timestamp: '05:18', label: 'Relata fadiga' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Investigar sangramentos, dieta, anti-inflamatorios e exames complementares',
-    },
-    {
-      id: 'gap-critical',
-      type: 'gap',
-      title: 'Lacuna clinica critica',
-      conclusion: 'Nao ha documentacao clara sobre inicio subito, deficit focal ou sinais neurologicos de alarme.',
-      whyItMatters: 'Essas respostas podem mudar prioridade de encaminhamento e conduta.',
-      evidence: [
-        { source: 'Consulta', label: 'Sem resposta clara' },
-        { source: 'RM', label: 'Achado nao caracterizado' },
-        { source: 'Exame neurologico', label: 'Nao documentado' },
-      ],
-      confidence: 'alta',
-      nextAction: 'Perguntar sobre fraqueza, alteracao visual, fala, marcha e vomitos',
-    },
-  ];
+  // Cabecalho real do paciente (cai no exemplo so se nao houver caso informado)
+  const patientInitials = caseData ? initialsFrom(caseData.patientName) : 'MS';
+  const patientLine = caseData
+    ? `${caseData.patientName || 'Paciente'}${caseData.age ? `, ${caseData.age} anos` : ''}`
+    : 'M.S., 62 anos';
+  const patientMeta = caseData
+    ? [
+        caseData.gender === 'F' ? 'Feminino' : caseData.gender === 'M' ? 'Masculino' : null,
+        caseData.specialty || null,
+        OBJECTIVE_LABELS[caseData.objective] || null,
+      ]
+        .filter(Boolean)
+        .join(' • ')
+    : 'Feminino • Neurologia • Segunda opiniao';
 
-  const problems = [
-    {
-      title: 'Cefaleia progressiva de padrao preocupante',
-      priority: 'critical',
-      status: 'Investigacao urgente',
-      summary: 'Evolucao de 3 meses com piora matinal e intensidade crescente.',
-    },
-    {
-      title: 'Lesao encefalica nao caracterizada',
-      priority: 'critical',
-      status: 'Requer contraste',
-      summary: 'Achado frontoparietal E 1.2cm em T2/FLAIR.',
-    },
-    {
-      title: 'Anemia em investigacao',
-      priority: 'moderate',
-      status: 'Acompanhar tendencia',
-      summary: 'Hb 10.4 g/dL com queda progressiva.',
-    },
-    {
-      title: 'HAS em tratamento',
-      priority: 'moderate',
-      status: 'Avaliar controle',
-      summary: 'Losartana 50mg - adesao a confirmar.',
-    },
-  ];
+  // Dados reais do dossiê (claude-opus-4-8). Exemplo só quando não há análise.
+  const detectiveFindings = intelligence?.detectiveFindings ?? EXAMPLE_FINDINGS;
+  const problems = intelligence?.problems ?? EXAMPLE_PROBLEMS;
+  const gaps = intelligence?.gaps ?? EXAMPLE_GAPS;
+  const nextSteps = intelligence?.nextSteps ?? EXAMPLE_NEXT_STEPS;
+  const timelineEvents = intelligence?.timeline ?? EXAMPLE_TIMELINE;
 
-  const gaps = [
-    { question: 'Houve inicio subito ou piora abrupta da cefaleia?', impact: 'Muda urgencia', priority: 'critical' },
-    { question: 'Presenca de deficit motor, sensitivo ou visual?', impact: 'Indica focal', priority: 'critical' },
-    { question: 'Historia de vomitos em jato ou alteracao de consciencia?', impact: 'Sinal de alarme', priority: 'high' },
-    { question: 'Uso recente de anti-inflamatorios ou anticoagulantes?', impact: 'Explica anemia', priority: 'moderate' },
-    { question: 'Adesao real ao tratamento anti-hipertensivo?', impact: 'Risco CV', priority: 'moderate' },
-  ];
-
-  const nextSteps = [
-    { action: 'RM cranio com contraste gadolinio', urgency: 'Urgente', reason: 'Caracterizar lesao' },
-    { action: 'Avaliacao neurologica completa', urgency: 'Urgente', reason: 'Sinais focais' },
-    { action: 'Hemograma de controle + ferritina + reticulocitos', urgency: 'Breve', reason: 'Investigar anemia' },
-    { action: 'Revisao medicamentosa detalhada', urgency: 'Proxima consulta', reason: 'Adesao e interacoes' },
-    { action: 'MAPA 24h', urgency: 'Eletivo', reason: 'Avaliar controle PA' },
-  ];
-
-  const timelineEvents = [
-    { date: '3 meses atras', event: 'Inicio da cefaleia episodica', type: 'symptom' },
-    { date: '6 semanas atras', event: 'Cefaleia torna-se progressiva', type: 'worsening' },
-    { date: '2 semanas atras', event: 'Inicio de tontura intermitente', type: 'symptom' },
-    { date: '1 semana atras', event: 'RM cranio realizada', type: 'exam' },
-    { date: 'Hoje', event: 'Consulta atual', type: 'consultation' },
-  ];
+  // Contagem real por tipo de achado (cabeçalho do Detective)
+  const typeCounts = detectiveFindings.reduce<Record<string, number>>((acc, f) => {
+    acc[f.type] = (acc[f.type] || 0) + 1;
+    return acc;
+  }, {});
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -204,14 +213,14 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
           {/* Paciente */}
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 flex items-center justify-center">
-              <span className="text-base font-semibold text-white">MS</span>
+              <span className="text-base font-semibold text-white">{patientInitials}</span>
             </div>
             <div>
               <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-                M.S., 62 anos
+                {patientLine}
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Feminino • Neurologia • Segunda opiniao
+                {patientMeta}
               </p>
             </div>
           </div>
@@ -257,25 +266,24 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
                 </div>
               </div>
               <p className="text-sm text-gray-300 leading-relaxed">
-                O ClinIQ analisou audio, documentos e exames para encontrar padroes, inconsistencias e lacunas que merecem atencao.
+                O ClinIQ analisou o áudio da consulta para encontrar padroes, inconsistencias, correlacoes e lacunas — cada conclusao com evidencia rastreavel ate o timestamp do audio.
               </p>
-              <div className="flex items-center gap-4 mt-4">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-violet-400" />
-                  <span className="text-xs text-gray-400">1 padrao</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span className="text-xs text-gray-400">1 inconsistencia</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-gray-400">1 correlacao</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-rose-400" />
-                  <span className="text-xs text-gray-400">1 lacuna</span>
-                </div>
+              <div className="flex flex-wrap items-center gap-4 mt-4">
+                {[
+                  { type: 'pattern', color: 'bg-violet-400', label: 'padrao', plural: 'padroes' },
+                  { type: 'inconsistency', color: 'bg-amber-400', label: 'inconsistencia', plural: 'inconsistencias' },
+                  { type: 'correlation', color: 'bg-emerald-400', label: 'correlacao', plural: 'correlacoes' },
+                  { type: 'gap', color: 'bg-rose-400', label: 'lacuna', plural: 'lacunas' },
+                ]
+                  .filter((t) => (typeCounts[t.type] || 0) > 0)
+                  .map((t) => (
+                    <div key={t.type} className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${t.color}`} />
+                      <span className="text-xs text-gray-400">
+                        {typeCounts[t.type]} {typeCounts[t.type] === 1 ? t.label : t.plural}
+                      </span>
+                    </div>
+                  ))}
               </div>
             </div>
 
@@ -320,18 +328,23 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
                   </p>
                 </div>
 
-                {/* Evidencias */}
+                {/* Evidencias rastreaveis: timestamp do audio -> trecho citado */}
                 <div className="mb-3">
                   <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 block">Evidencias</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="space-y-1.5">
                     {finding.evidence.map((ev, i) => (
-                      <span
+                      <div
                         key={i}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
+                        className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
                       >
-                        <FileText size={10} />
-                        {ev.source} {ev.timestamp && `${ev.timestamp}`} {ev.page && `p.${ev.page}`}
-                      </span>
+                        <span className="inline-flex items-center gap-1 font-medium text-sky-600 dark:text-sky-400 tabular-nums flex-shrink-0">
+                          <Clock size={10} />
+                          {ev.timestamp || ev.source}
+                        </span>
+                        {ev.quote && (
+                          <span className="italic text-gray-600 dark:text-gray-400">“{ev.quote}”</span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -348,6 +361,69 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
           </div>
         )}
 
+        {/* TRANSCRICAO (real) */}
+        {activeSection === 'transcricao' && (
+          <div className="space-y-4">
+            {transcription && transcription.segments.length > 0 ? (
+              <>
+                {/* Resumo da transcricao + custo (semente do item 4) */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Captions size={16} className="text-sky-500" />
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Transcricao da consulta
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      {transcription.segments.length} trechos
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      {formatTimestamp(transcription.durationSec)} de audio
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      PT-BR
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300">
+                      ~US$ {transcription.cost.usd.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Trechos com timestamp clicavel-ready (evidencia rastreavel) */}
+                <div className="space-y-2">
+                  {transcription.segments.map((seg) => (
+                    <div
+                      key={seg.id}
+                      className="bg-white dark:bg-gray-900 rounded-xl p-3 border border-gray-200 dark:border-gray-800 flex gap-3"
+                    >
+                      <span className="text-xs font-medium text-sky-600 dark:text-sky-400 tabular-nums pt-0.5 flex-shrink-0">
+                        {formatTimestamp(seg.start)}
+                      </span>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {seg.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : transcription ? (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                  {transcription.text || 'A transcricao retornou vazia.'}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 text-center">
+                <Captions size={28} className="text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Nenhuma transcricao disponivel para este caso.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* RESUMO */}
         {activeSection === 'resumo' && (
           <div className="space-y-4">
@@ -356,11 +432,9 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
                 <Clock size={14} className="text-gray-400" />
                 <span className="text-xs text-gray-500">Leitura em 30 segundos</span>
               </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                Paciente feminina, 62 anos, apresenta quadro de <strong>cefaleia progressiva ha 3 meses</strong>, com caracteristica de piora matinal e intensidade crescente. RM de cranio evidencia <strong>lesao frontoparietal esquerda de 1.2cm</strong> nao caracterizada, necessitando estudo com contraste.
-              </p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mt-3">
-                Concomitantemente, apresenta <strong>anemia em investigacao</strong> (Hb 10.4 g/dL) com queda progressiva e <strong>HAS em tratamento</strong> com possivel baixa adesao. O conjunto de achados sugere investigacao neurologica prioritaria.
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {intelligence?.summary ??
+                  'Paciente feminina, 62 anos, com cefaleia progressiva ha 3 meses, piora matinal e intensidade crescente. RM de cranio com lesao frontoparietal esquerda nao caracterizada. Anemia em investigacao e HAS em tratamento. O conjunto sugere investigacao neurologica prioritaria.'}
               </p>
             </div>
 
@@ -533,6 +607,149 @@ export default function CaseIntelligenceReport({ onBack }: CaseIntelligenceRepor
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* MARGEM UNITARIA (interno — item 4) */}
+        {activeSection === 'margem' && (
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-4">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                  <Wallet size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-white">Margem unitária</h2>
+                  <p className="text-xs text-gray-400">Visão interna · custo por análise</p>
+                </div>
+              </div>
+            </div>
+
+            {!cost.hasData ? (
+              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 text-center">
+                <Wallet size={28} className="text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Sem dados de custo para este caso (exemplo). Gere uma análise real para ver a margem.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Quebra de custo */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 space-y-3">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Custo desta análise</span>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Captions size={14} className="text-sky-500" />
+                      <span className="text-gray-700 dark:text-gray-300">
+                        Transcrição
+                        <span className="text-gray-400 dark:text-gray-500">
+                          {' '}· {cost.audioMinutes.toFixed(1)} min (Whisper)
+                        </span>
+                      </span>
+                    </div>
+                    <span className="tabular-nums text-gray-900 dark:text-white">
+                      US$ {cost.transcriptionUsd.toFixed(4)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Search size={14} className="text-amber-500" />
+                      <span className="text-gray-700 dark:text-gray-300">
+                        Clinical Detective
+                        <span className="text-gray-400 dark:text-gray-500">
+                          {' '}· {cost.inputTokens.toLocaleString('pt-BR')} in / {cost.outputTokens.toLocaleString('pt-BR')} out (Opus 4.8)
+                        </span>
+                      </span>
+                    </div>
+                    <span className="tabular-nums text-gray-900 dark:text-white">
+                      US$ {cost.detectiveUsd.toFixed(4)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <span className="font-medium text-gray-900 dark:text-white">Total</span>
+                    <span className="tabular-nums font-semibold text-gray-900 dark:text-white">
+                      US$ {cost.totalUsd.toFixed(4)} · R$ {cost.totalBrl.toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    Câmbio assumido: US$ 1 = R$ {USD_TO_BRL.toFixed(2).replace('.', ',')}
+                  </p>
+                </div>
+
+                {/* Premissa de volume */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Consultas por mês</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">
+                      {analysesPerMonth}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={10}
+                    max={300}
+                    step={5}
+                    value={analysesPerMonth}
+                    onChange={(e) => setAnalysesPerMonth(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Plano Solo R$ {DEFAULT_PLAN_PRICE_BRL}/mês ÷ {analysesPerMonth} consultas ={' '}
+                    <strong className="text-gray-700 dark:text-gray-300">
+                      R$ {margin.revenuePerAnalysisBrl.toFixed(2).replace('.', ',')}
+                    </strong>{' '}
+                    de receita por análise.
+                  </p>
+                </div>
+
+                {/* Margem */}
+                <div
+                  className={`rounded-2xl p-4 border ${
+                    margin.marginBrl >= 0
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      {margin.marginBrl >= 0 ? (
+                        <TrendingUp size={16} className="text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <TrendingDown size={16} className="text-rose-600 dark:text-rose-400" />
+                      )}
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Margem unitária
+                      </span>
+                    </div>
+                    <span
+                      className={`text-xs font-semibold tabular-nums ${
+                        margin.marginBrl >= 0
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-rose-700 dark:text-rose-300'
+                      }`}
+                    >
+                      {margin.marginPct.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div
+                    className={`text-2xl font-semibold tabular-nums ${
+                      margin.marginBrl >= 0
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}
+                  >
+                    R$ {margin.marginBrl.toFixed(2).replace('.', ',')}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Receita R$ {margin.revenuePerAnalysisBrl.toFixed(2).replace('.', ',')} − custo R${' '}
+                    {margin.costBrl.toFixed(2).replace('.', ',')} por análise.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

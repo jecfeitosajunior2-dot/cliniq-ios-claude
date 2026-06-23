@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, FileText, FlaskConical, Image, Upload, Check, Sparkles, X, Clock, Mic } from 'lucide-react';
+import type { CaseData } from '@/lib/types';
 
 interface CompleteCaseProps {
-  onSubmit: () => void;
+  onSubmit: (data: CaseData) => void;
   onBack: () => void;
   recordingDuration?: number;
+  audioUrl?: string;
 }
 
 interface UploadedFile {
@@ -17,7 +19,7 @@ interface UploadedFile {
   status: 'ready' | 'processing';
 }
 
-export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0 }: CompleteCaseProps) {
+export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, audioUrl }: CompleteCaseProps) {
   const [patientName, setPatientName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'M' | 'F' | ''>('');
@@ -113,12 +115,23 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0 }
               <div className="flex items-center gap-3 mt-1 text-xs text-emerald-600/70 dark:text-emerald-400/70">
                 <span className="flex items-center gap-1">
                   <Clock size={12} />
-                  {formatDuration(recordingDuration || 342)}
+                  {formatDuration(recordingDuration)}
                 </span>
-                <span>2 vozes detectadas</span>
+                <span>Pronto para transcricao</span>
               </div>
             </div>
           </div>
+
+          {/* Player do audio real capturado */}
+          {audioUrl && (
+            <audio
+              controls
+              src={audioUrl}
+              className="w-full mt-3 h-9"
+            >
+              Seu navegador nao suporta a reproducao de audio.
+            </audio>
+          )}
         </div>
       </div>
 
@@ -323,7 +336,9 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0 }
       {/* Footer fixo */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800 max-w-md mx-auto">
         <button
-          onClick={onSubmit}
+          onClick={() =>
+            onSubmit({ patientName, age, gender, specialty, chiefComplaint, objective })
+          }
           disabled={!isFormValid}
           className={`w-full py-4 rounded-2xl font-semibold text-base flex items-center justify-center gap-2 transition-all ${
             isFormValid
