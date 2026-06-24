@@ -10,6 +10,28 @@ interface LoginProps {
 
 type Mode = 'signin' | 'signup';
 
+/** Traduz erros técnicos do Supabase Auth em mensagens compreensíveis ao médico. */
+function humanizeAuthError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : '';
+  const msg = raw.toLowerCase();
+  if (msg.includes('invalid login credentials')) {
+    return 'E-mail ou senha incorretos.';
+  }
+  if (msg.includes('user already registered') || msg.includes('already registered')) {
+    return 'Já existe uma conta com este e-mail. Tente entrar.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Confirme seu e-mail antes de entrar.';
+  }
+  if (msg.includes('password') && (msg.includes('least') || msg.includes('short') || msg.includes('6'))) {
+    return 'A senha precisa ter pelo menos 6 caracteres.';
+  }
+  if (msg.includes('load failed') || msg.includes('failed to fetch') || msg.includes('network')) {
+    return 'Não foi possível conectar. Verifique sua internet e tente novamente.';
+  }
+  return 'Não foi possível concluir. Tente novamente em instantes.';
+}
+
 export default function Login({ onAuthenticated }: LoginProps) {
   const [mode, setMode] = useState<Mode>('signin');
   const [fullName, setFullName] = useState('');
@@ -50,7 +72,7 @@ export default function Login({ onAuthenticated }: LoginProps) {
         onAuthenticated();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Falha na autenticação.');
+      setError(humanizeAuthError(e));
     } finally {
       setLoading(false);
     }

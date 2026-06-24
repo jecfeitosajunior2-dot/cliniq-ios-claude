@@ -26,6 +26,12 @@ export interface TranscriptionResult {
   cost: CostBreakdown;
 }
 
+/** Estado do caso no pipeline server-side (espelha o CHECK em `cases.status`). */
+export type CaseStatus = 'draft' | 'recorded' | 'transcribed' | 'ready' | 'failed';
+
+/** Estado de exclusão recuperável (espelha o CHECK em `cases.delete_status`). */
+export type DeleteStatus = 'active' | 'delete_requested' | 'deleting' | 'delete_failed' | 'deleted';
+
 /** Dados do caso preenchidos pelo médico em CompleteCase. */
 export interface CaseData {
   patientName: string;

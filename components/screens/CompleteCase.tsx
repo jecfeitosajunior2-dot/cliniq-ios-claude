@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, FileText, FlaskConical, Image, Upload, Check, Sparkles, X, Clock, Mic } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Sparkles, Clock, Mic } from 'lucide-react';
 import type { CaseData } from '@/lib/types';
 
 interface CompleteCaseProps {
@@ -11,14 +11,6 @@ interface CompleteCaseProps {
   audioUrl?: string;
 }
 
-interface UploadedFile {
-  id: string;
-  name: string;
-  type: 'pdf' | 'lab' | 'image' | 'audio';
-  size: string;
-  status: 'ready' | 'processing';
-}
-
 export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, audioUrl }: CompleteCaseProps) {
   const [patientName, setPatientName] = useState('');
   const [age, setAge] = useState('');
@@ -26,7 +18,6 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, 
   const [specialty, setSpecialty] = useState('');
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [objective, setObjective] = useState('');
-  const [files, setFiles] = useState<UploadedFile[]>([]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -35,7 +26,7 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, 
   };
 
   const specialties = [
-    'Clinica Geral', 'Cardiologia', 'Neurologia', 'Endocrinologia', 
+    'Clinica Geral', 'Cardiologia', 'Neurologia', 'Endocrinologia',
     'Pneumologia', 'Gastroenterologia', 'Oncologia', 'Psiquiatria',
     'Geriatria', 'Reumatologia', 'Nefrologia', 'Outra'
   ];
@@ -46,34 +37,6 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, 
     { id: 'followup', label: 'Retorno / Acompanhamento' },
     { id: 'referral', label: 'Encaminhamento' },
   ];
-
-  const handleFileUpload = (type: 'pdf' | 'lab' | 'image') => {
-    const mockFiles: Record<string, { name: string; size: string }> = {
-      pdf: { name: 'Laudo_RM_Cranio.pdf', size: '2.4 MB' },
-      lab: { name: 'Hemograma_Completo.pdf', size: '156 KB' },
-      image: { name: 'Radiografia_Torax.jpg', size: '1.8 MB' },
-    };
-    
-    const newFile: UploadedFile = {
-      id: Date.now().toString(),
-      name: mockFiles[type].name,
-      type,
-      size: mockFiles[type].size,
-      status: 'processing'
-    };
-    
-    setFiles(prev => [...prev, newFile]);
-    
-    setTimeout(() => {
-      setFiles(prev => prev.map(f => 
-        f.id === newFile.id ? { ...f, status: 'ready' } : f
-      ));
-    }, 1500);
-  };
-
-  const removeFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
-  };
 
   const isFormValid = patientName && age && gender && specialty && chiefComplaint && objective;
 
@@ -257,79 +220,15 @@ export default function CompleteCase({ onSubmit, onBack, recordingDuration = 0, 
           </div>
         </div>
 
-        {/* Documentos complementares */}
+        {/* Anexos clinicos */}
         <div>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs flex items-center justify-center font-medium">2</span>
-            Adicionar contexto clinico
-            <span className="text-xs font-normal text-gray-400">(opcional)</span>
+            Anexos clinicos
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 ml-8">
-            PDFs, exames e imagens enriquecem a analise
+          <p className="text-xs text-gray-500 dark:text-gray-400 ml-8">
+            Anexos clínicos estarão disponíveis em uma próxima etapa.
           </p>
-
-          {/* Botoes de upload */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => handleFileUpload('pdf')}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 transition-all active:scale-[0.98]"
-            >
-              <FileText size={18} className="text-red-500" />
-              PDF
-            </button>
-            <button
-              onClick={() => handleFileUpload('lab')}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 transition-all active:scale-[0.98]"
-            >
-              <FlaskConical size={18} className="text-emerald-500" />
-              Exame
-            </button>
-            <button
-              onClick={() => handleFileUpload('image')}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 transition-all active:scale-[0.98]"
-            >
-              <Image size={18} className="text-sky-500" />
-              Imagem
-            </button>
-          </div>
-
-          {/* Lista de arquivos */}
-          {files.length > 0 && (
-            <div className="space-y-2">
-              {files.map(file => (
-                <div
-                  key={file.id}
-                  className="bg-white dark:bg-gray-900 rounded-xl p-3 border border-gray-200 dark:border-gray-800 flex items-center gap-3"
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    file.type === 'pdf' ? 'bg-red-50 dark:bg-red-900/20' :
-                    file.type === 'lab' ? 'bg-emerald-50 dark:bg-emerald-900/20' :
-                    'bg-sky-50 dark:bg-sky-900/20'
-                  }`}>
-                    {file.type === 'pdf' ? <FileText size={18} className="text-red-500" /> :
-                     file.type === 'lab' ? <FlaskConical size={18} className="text-emerald-500" /> :
-                     <Image size={18} className="text-sky-500" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {file.name}
-                    </p>
-                    <p className="text-xs text-gray-500">{file.size}</p>
-                  </div>
-                  {file.status === 'processing' ? (
-                    <div className="w-5 h-5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Check size={16} className="text-emerald-500" />
-                      <button onClick={() => removeFile(file.id)}>
-                        <X size={16} className="text-gray-400" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 

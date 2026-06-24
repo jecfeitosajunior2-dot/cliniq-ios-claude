@@ -6,16 +6,12 @@ import { transcribeAudio } from '@/lib/transcribe';
 import { runDetective } from '@/lib/detective';
 import { uploadAudio } from '@/lib/audio-upload';
 import type { RecordingResult } from '@/lib/useAudioRecorder';
-import type { CaseData, CaseIntelligence, TranscriptionResult } from '@/lib/types';
+import type { CaseIntelligence, TranscriptionResult } from '@/lib/types';
 
 interface AnalysisInProgressProps {
+  caseId: string;
   recording: RecordingResult | null;
-  caseData: CaseData | null;
-  onComplete: (
-    transcription: TranscriptionResult,
-    intelligence: CaseIntelligence,
-    audioPath: string | null,
-  ) => void;
+  onComplete: (transcription: TranscriptionResult, intelligence: CaseIntelligence) => void;
   onCancel: () => void;
 }
 
@@ -58,8 +54,8 @@ interface Stage {
 }
 
 export default function AnalysisInProgress({
+  caseId,
   recording,
-  caseData,
   onComplete,
   onCancel,
 }: AnalysisInProgressProps) {
@@ -90,23 +86,20 @@ export default function AnalysisInProgress({
 
     (async () => {
       try {
-        // Sobe o áudio ao Storage (se houver backend) para contornar o limite
-        // de corpo da Vercel; o path fica guardado no caso.
-        const uploaded = await uploadAudio(recording.blob, recording.mimeType);
+        // Sobe o áudio ao Storage e marca o caso como gravado; transcrição e
+        // dossiê são pedidos só pelo caseId — o servidor relê tudo da linha
+        // persistida (item 3).
+        const uploaded = await uploadAudio(caseId, recording.blob, recording.mimeType);
+        if (!uploaded.ok) throw new Error(uploaded.error);
         if (cancelled) return;
 
-        const transcription = await transcribeAudio(
-          recording.blob,
-          recording.mimeType,
-          recording.durationSec,
-          uploaded?.signedUrl ?? null,
-        );
+        const transcription = await transcribeAudio(caseId);
         if (cancelled) return;
 
         setPhase('detective');
         setProgress((p) => Math.max(p, 52));
 
-        const intelligence = await runDetective(transcription, caseData);
+        const intelligence = await runDetective(caseId);
         if (cancelled) return;
 
         setFindingsCount(intelligence.detectiveFindings.length);
@@ -115,7 +108,7 @@ export default function AnalysisInProgress({
         setParticleCount(16);
         setTimeout(() => {
           if (!cancelled) {
-            onCompleteRef.current(transcription, intelligence, uploaded?.path ?? null);
+            onCompleteRef.current(transcription, intelligence);
           }
         }, 1300);
       } catch (e: unknown) {
@@ -127,7 +120,7 @@ export default function AnalysisInProgress({
     return () => {
       cancelled = true;
     };
-  }, [recording, caseData, retryKey]);
+  }, [recording, caseId, retryKey]);
 
   // Progresso "respira" até o teto da fase; 100% só ao concluir o dossiê.
   useEffect(() => {

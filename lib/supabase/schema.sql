@@ -109,3 +109,12 @@ create policy "consultations_delete_own" on storage.objects
     bucket_id = 'consultations'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- =============================================================================
+-- Migrações posteriores a este baseline vivem em supabase/migrations/, em
+-- arquivos versionados com forward (.up.sql) e rollback (.down.sql) próprios.
+-- Não adicione novos blocos de "migração pendente" diretamente aqui — veja
+-- supabase/migrations/0001_phase1_hardening.up.sql (consentimento
+-- persistido, estado do caso, exclusão recuperável, quota e idempotência
+-- atômicas). Nenhuma migration foi executada em produção até o momento.
+-- =============================================================================

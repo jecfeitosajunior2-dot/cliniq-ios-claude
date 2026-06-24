@@ -167,7 +167,7 @@ export default function NewCase({ onNavigate, onBack }: NewCaseProps) {
             </button>
             <div>
               <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Alimentar Segundo Cérebro
+                Adicionar materiais do caso
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Envie materiais para análise inteligente

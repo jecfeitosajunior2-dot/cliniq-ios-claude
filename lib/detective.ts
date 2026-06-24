@@ -1,18 +1,16 @@
-import type { CaseData, CaseIntelligence, TranscriptionResult } from './types';
+import type { CaseIntelligence } from './types';
 
-/** Envia a transcrição + dados do caso para a rota do Clinical Detective. */
-export async function runDetective(
-  transcription: TranscriptionResult,
-  caseData: CaseData | null,
-): Promise<CaseIntelligence> {
+/**
+ * Pede o dossiê do Clinical Detective para um caso já transcrito. Manda só
+ * o `caseId` — o servidor relê a transcrição e os dados do caso da linha
+ * persistida, nunca aceita transcrição arbitrária enviada pelo client como
+ * fonte de verdade (item 3).
+ */
+export async function runDetective(caseId: string): Promise<CaseIntelligence> {
   const resp = await fetch('/api/detective', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      transcript: transcription.text,
-      segments: transcription.segments,
-      caseData,
-    }),
+    body: JSON.stringify({ caseId }),
   });
 
   if (!resp.ok) {

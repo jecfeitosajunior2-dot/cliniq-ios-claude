@@ -144,7 +144,7 @@ export default function Home({
             Toque para capturar a consulta
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto leading-relaxed">
-            Audio, raciocinio clinico e dossie em minutos
+            Transforme a conversa da consulta em um rascunho clinico estruturado
           </p>
         </div>
 
@@ -156,7 +156,7 @@ export default function Home({
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-            <span>Detecta padroes</span>
+            <span>Voce revisa e decide</span>
           </div>
         </div>
       </div>

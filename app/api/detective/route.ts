@@ -2,8 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import type {
   CaseData,
   CaseIntelligence,
+  TranscriptionResult,
   TranscriptSegment,
 } from '@/lib/types';
+import { getSupabaseServer } from '@/lib/supabase/server';
+import { getPrivilegedSupabase } from '@/lib/supabase/privileged';
+import { loadOwnedCase } from '@/lib/case-access';
+import { beginCaseOperation, finishCaseOperation } from '@/lib/case-operations';
+import { PILOT_LIMITS } from '@/lib/limits';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -150,107 +156,193 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: {
-    transcript?: string;
-    segments?: TranscriptSegment[];
-    caseData?: CaseData | null;
-  };
+  // Validação de sessão ANTES de qualquer leitura de corpo ou chamada externa.
+  const supabase = await getSupabaseServer();
+  if (!supabase) {
+    return Response.json({ error: 'Backend não configurado.' }, { status: 503 });
+  }
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData.user?.id;
+  if (!userId) {
+    return Response.json(
+      { error: 'Sessão inválida ou expirada. Faça login novamente.' },
+      { status: 401 },
+    );
+  }
+
+  // Camada privilegiada (Fase 1R2, item 1) — só ela pode gravar campos
+  // server-controlled de `cases` a partir daqui.
+  const privileged = getPrivilegedSupabase();
+  if (!privileged) {
+    return Response.json(
+      { error: 'Backend privilegiado não configurado neste ambiente.' },
+      { status: 503 },
+    );
+  }
+
+  // Única entrada aceita: o id do caso. Transcrição e dados do caso vêm da
+  // linha persistida — nunca de transcrição enviada solta pelo client (item 3).
+  let body: { caseId?: string };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: 'Requisição inválida (JSON esperado).' }, { status: 400 });
   }
-
-  const segments = body.segments ?? [];
-  const transcript = (body.transcript ?? '').trim();
-  if (!transcript && segments.length === 0) {
-    return Response.json({ error: 'Transcrição ausente.' }, { status: 400 });
+  const caseId = body.caseId;
+  if (!caseId) {
+    return Response.json({ error: 'caseId ausente.' }, { status: 400 });
   }
 
-  const c = body.caseData;
-  const caseHeader = c
-    ? `Paciente: ${c.patientName || 'não informado'}; Idade: ${c.age || 'não informada'}; Sexo: ${
-        c.gender === 'F' ? 'feminino' : c.gender === 'M' ? 'masculino' : 'não informado'
-      }; Especialidade: ${c.specialty || 'não informada'}; Queixa principal: ${
-        c.chiefComplaint || 'não informada'
-      }; Objetivo: ${c.objective || 'não informado'}.`
-    : 'Dados do caso não informados.';
-
-  const userContent = `Contexto do caso:
-${caseHeader}
-
-Transcrição da consulta (cada linha começa com o timestamp [mm:ss] do trecho no áudio):
-${segments.length > 0 ? formatSegments(segments) : transcript}
-
-Gere o dossiê clínico estruturado conforme o schema. Garanta que cada evidência aponte para o timestamp [mm:ss] do trecho correspondente.`;
-
-  const client = new Anthropic();
-
-  let message: Anthropic.Message;
-  try {
-    const stream = client.messages.stream({
-      model: MODEL,
-      max_tokens: 16000,
-      thinking: { type: 'adaptive' },
-      system: SYSTEM_PROMPT,
-      output_config: { format: { type: 'json_schema', schema: CASE_SCHEMA } },
-      messages: [{ role: 'user', content: userContent }],
-    });
-    message = await stream.finalMessage();
-  } catch (e) {
-    const detail = e instanceof Error ? e.message : 'erro desconhecido';
-    return Response.json(
-      { error: 'Falha ao gerar o Clinical Detective.', detail: detail.slice(0, 500) },
-      { status: 502 },
-    );
+  const loaded = await loadOwnedCase(supabase, userId, caseId);
+  if (!loaded.ok) {
+    return Response.json({ error: loaded.error }, { status: loaded.status });
   }
+  const caseRow = loaded.row;
 
-  if (message.stop_reason === 'refusal') {
+  if (caseRow.status !== 'transcribed') {
     return Response.json(
-      { error: 'A análise foi recusada por políticas de segurança.' },
+      {
+        error:
+          caseRow.status === 'ready'
+            ? 'Este caso já tem um dossiê gerado.'
+            : 'Este caso ainda não foi transcrito.',
+      },
       { status: 422 },
     );
   }
 
-  const textBlock = message.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    return Response.json({ error: 'Resposta vazia do modelo.' }, { status: 502 });
+  const transcription = caseRow.transcription as TranscriptionResult | null;
+  const fullText = (transcription?.text ?? '').trim();
+  const segments = transcription?.segments ?? [];
+  if (!transcription || (!fullText && segments.length === 0)) {
+    return Response.json({ error: 'Transcrição ausente para este caso.' }, { status: 422 });
+  }
+  if (fullText.length > PILOT_LIMITS.maxTranscriptChars) {
+    return Response.json(
+      { error: 'Transcrição maior que o limite permitido no piloto.' },
+      { status: 413 },
+    );
   }
 
-  let parsed: Omit<CaseIntelligence, 'cost'>;
+  const beginResult = await beginCaseOperation(userId, caseId, 'detective');
+  if (!beginResult.ok) {
+    return Response.json({ error: beginResult.error }, { status: beginResult.status });
+  }
+  const { processingJobId } = beginResult;
+
+  let finishedAs: 'done' | 'failed' = 'failed';
   try {
-    parsed = JSON.parse(textBlock.text);
-  } catch {
-    return Response.json({ error: 'Saída do modelo não pôde ser interpretada.' }, { status: 502 });
+    const c = caseRow.case_data as CaseData | null;
+    const caseHeader = c
+      ? `Paciente: ${c.patientName || 'não informado'}; Idade: ${c.age || 'não informada'}; Sexo: ${
+          c.gender === 'F' ? 'feminino' : c.gender === 'M' ? 'masculino' : 'não informado'
+        }; Especialidade: ${c.specialty || 'não informada'}; Queixa principal: ${
+          c.chiefComplaint || 'não informada'
+        }; Objetivo: ${c.objective || 'não informado'}.`
+      : 'Dados do caso não informados.';
+
+    const userContent = `Contexto do caso:
+${caseHeader}
+
+Transcrição da consulta (cada linha começa com o timestamp [mm:ss] do trecho no áudio):
+${segments.length > 0 ? formatSegments(segments) : fullText}
+
+Gere o dossiê clínico estruturado conforme o schema. Garanta que cada evidência aponte para o timestamp [mm:ss] do trecho correspondente.`;
+
+    const client = new Anthropic();
+
+    let message: Anthropic.Message;
+    try {
+      const stream = client.messages.stream({
+        model: MODEL,
+        max_tokens: 16000,
+        thinking: { type: 'adaptive' },
+        system: SYSTEM_PROMPT,
+        output_config: { format: { type: 'json_schema', schema: CASE_SCHEMA } },
+        messages: [{ role: 'user', content: userContent }],
+      });
+      message = await stream.finalMessage();
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : 'erro desconhecido';
+      return Response.json(
+        { error: 'Falha ao gerar o Clinical Detective.', detail: detail.slice(0, 500) },
+        { status: 502 },
+      );
+    }
+
+    if (message.stop_reason === 'refusal') {
+      return Response.json(
+        { error: 'A análise foi recusada por políticas de segurança.' },
+        { status: 422 },
+      );
+    }
+
+    const textBlock = message.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return Response.json({ error: 'Resposta vazia do modelo.' }, { status: 502 });
+    }
+
+    let parsed: Omit<CaseIntelligence, 'cost'>;
+    try {
+      parsed = JSON.parse(textBlock.text);
+    } catch {
+      return Response.json({ error: 'Saída do modelo não pôde ser interpretada.' }, { status: 502 });
+    }
+
+    const usage = message.usage;
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+    const usd = Number(
+      (
+        (inputTokens / 1_000_000) * OPUS_INPUT_USD_PER_MTOK +
+        (outputTokens / 1_000_000) * OPUS_OUTPUT_USD_PER_MTOK
+      ).toFixed(4),
+    );
+
+    const result: CaseIntelligence = {
+      summary: parsed.summary ?? '',
+      detectiveFindings: parsed.detectiveFindings ?? [],
+      problems: parsed.problems ?? [],
+      gaps: parsed.gaps ?? [],
+      nextSteps: parsed.nextSteps ?? [],
+      timeline: parsed.timeline ?? [],
+      cost: {
+        provider: 'anthropic',
+        model: MODEL,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        usd,
+      },
+    };
+
+    // status/intelligence/cost_usd são server-controlled (item 4) — só a
+    // camada privilegiada tem GRANT para gravá-los. Passa pelo trigger de
+    // máquina de estados (transcribed -> ready), que exige transcription e
+    // intelligence presentes.
+    const { error: updateError } = await privileged
+      .from('cases')
+      .update({
+        intelligence: result,
+        summary: result.summary,
+        findings_count: result.detectiveFindings.length,
+        status: 'ready',
+        cost_usd: Number((caseRow.cost_usd + usd).toFixed(4)),
+      })
+      .eq('id', caseId)
+      .eq('user_id', userId);
+    if (updateError) {
+      console.error('detective: falha ao persistir dossiê', updateError.message);
+      return Response.json(
+        { error: 'Dossiê gerado, mas não foi possível salvar no caso. Tente novamente.' },
+        { status: 502 },
+      );
+    }
+
+    finishedAs = 'done';
+    return Response.json(result);
+  } finally {
+    await finishCaseOperation(userId, caseId, 'detective', processingJobId, finishedAs);
   }
-
-  const usage = message.usage;
-  const inputTokens = usage.input_tokens ?? 0;
-  const outputTokens = usage.output_tokens ?? 0;
-  const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
-  const usd = Number(
-    (
-      (inputTokens / 1_000_000) * OPUS_INPUT_USD_PER_MTOK +
-      (outputTokens / 1_000_000) * OPUS_OUTPUT_USD_PER_MTOK
-    ).toFixed(4),
-  );
-
-  const result: CaseIntelligence = {
-    summary: parsed.summary ?? '',
-    detectiveFindings: parsed.detectiveFindings ?? [],
-    problems: parsed.problems ?? [],
-    gaps: parsed.gaps ?? [],
-    nextSteps: parsed.nextSteps ?? [],
-    timeline: parsed.timeline ?? [],
-    cost: {
-      provider: 'anthropic',
-      model: MODEL,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      usd,
-    },
-  };
-
-  return Response.json(result);
 }

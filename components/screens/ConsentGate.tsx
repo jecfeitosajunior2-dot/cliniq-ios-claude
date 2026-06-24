@@ -9,15 +9,22 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 
 interface ConsentGateProps {
-  /** Disparado somente após consentimento explícito. */
-  onConsent: () => void;
+  /**
+   * Disparado somente após consentimento explícito. O caso é criado no
+   * servidor (com `consent_confirmed_at` persistido) antes da navegação
+   * para a tela de gravação — por isso é assíncrono (item 4).
+   */
+  onConsent: () => void | Promise<void>;
   onCancel: () => void;
+  busy?: boolean;
+  error?: string | null;
 }
 
-export default function ConsentGate({ onConsent, onCancel }: ConsentGateProps) {
+export default function ConsentGate({ onConsent, onCancel, busy = false, error = null }: ConsentGateProps) {
   const [agreed, setAgreed] = useState(false);
 
   const points = [
@@ -134,24 +141,35 @@ export default function ConsentGate({ onConsent, onCancel }: ConsentGateProps) {
           <span className="text-sm text-gray-300 leading-relaxed">
             Confirmo que tenho o consentimento do paciente para gravar esta
             consulta e concordo com o uso do áudio para gerar o dossiê clínico.
+            O médico confirma que informou o paciente sobre o uso do ClinIQ
+            para registrar e organizar esta consulta.
           </span>
         </button>
       </div>
 
       {/* Footer fixo */}
       <div className="px-6 pb-10 pt-2 bg-gray-950">
+        {error && (
+          <p className="text-xs text-red-400 mb-3 text-center leading-relaxed">{error}</p>
+        )}
         <button
-          onClick={onConsent}
-          disabled={!agreed}
+          onClick={() => onConsent()}
+          disabled={!agreed || busy}
           className={`w-full py-4 rounded-2xl font-semibold text-base flex items-center justify-center gap-2 transition-all ${
-            agreed
+            agreed && !busy
               ? 'bg-gradient-to-r from-sky-500 to-cyan-500 text-white shadow-lg active:scale-[0.98]'
               : 'bg-gray-800 text-gray-500'
           }`}
         >
-          <Mic size={18} />
-          Concordo e iniciar gravação
-          <ChevronRight size={18} />
+          {busy ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <>
+              <Mic size={18} />
+              Concordo e iniciar gravação
+              <ChevronRight size={18} />
+            </>
+          )}
         </button>
       </div>
     </div>

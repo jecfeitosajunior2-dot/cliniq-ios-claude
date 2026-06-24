@@ -13,7 +13,8 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import {
   listCases,
   getCase,
-  saveCase,
+  createDraftCase,
+  updateCaseData,
   relativeTime,
   initialsFrom,
   type CaseSummary,
@@ -32,32 +33,6 @@ type Screen =
 
 type AuthStatus = 'loading' | 'authed' | 'anon';
 
-// Casos de exemplo só aparecem no modo local (sem backend configurado).
-const DEMO_CASES: CaseSummary[] = [
-  {
-    id: 'demo-1',
-    patientName: 'M. S.',
-    patientInitials: 'M.S.',
-    age: '62',
-    specialty: 'Neurologia',
-    summary: '',
-    findingsCount: 0,
-    costUsd: 0,
-    createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
-  },
-  {
-    id: 'demo-2',
-    patientName: 'R. C.',
-    patientInitials: 'R.C.',
-    age: '48',
-    specialty: 'Cardiologia',
-    summary: '',
-    findingsCount: 0,
-    costUsd: 0,
-    createdAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
-  },
-];
-
 export default function App() {
   const supabaseOn = isSupabaseConfigured();
 
@@ -71,7 +46,10 @@ export default function App() {
 
   const [authStatus, setAuthStatus] = useState<AuthStatus>(supabaseOn ? 'loading' : 'anon');
   const [doctorName, setDoctorName] = useState('');
-  const [recentCases, setRecentCases] = useState<CaseSummary[]>(supabaseOn ? [] : DEMO_CASES);
+  const [recentCases, setRecentCases] = useState<CaseSummary[]>([]);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
 
   // --- Sessão (só quando há backend) ---
   useEffect(() => {
@@ -96,7 +74,7 @@ export default function App() {
   // --- Carrega casos reais quando autenticado ---
   const reloadCases = useCallback(async () => {
     if (!supabaseOn) {
-      setRecentCases(DEMO_CASES);
+      setRecentCases([]);
       return;
     }
     const data = await listCases(20);
@@ -125,33 +103,36 @@ export default function App() {
     setCurrentScreen('complete');
   };
 
-  const handleCaseSubmit = (data: CaseData) => {
+  const handleCaseSubmit = async (data: CaseData) => {
     setCaseData(data);
+    if (caseId) {
+      await updateCaseData(caseId, data);
+    }
     setCurrentScreen('analysis');
   };
 
-  const handleAnalysisComplete = async (
-    result: TranscriptionResult,
-    intel: CaseIntelligence,
-    audioPath: string | null,
-  ) => {
+  const handleAnalysisComplete = (result: TranscriptionResult, intel: CaseIntelligence) => {
     setTranscription(result);
     setIntelligence(intel);
     setCurrentScreen('report');
-    // Persiste em background; ao voltar para a Home a lista já reflete.
-    const id = await saveCase(caseData, result, intel, audioPath);
-    if (id) reloadCases();
+    reloadCases();
+  };
+
+  const handleConsent = async () => {
+    setConsentBusy(true);
+    setConsentError(null);
+    const result = await createDraftCase();
+    setConsentBusy(false);
+    if ('error' in result) {
+      setConsentError(result.error);
+      return;
+    }
+    setCaseId(result.id);
+    setCurrentScreen('recording');
   };
 
   const openCase = async (id: string) => {
-    if (!supabaseOn || id.startsWith('demo-')) {
-      // Modo local: abre o relatório com os dados de exemplo embutidos.
-      setCaseData(null);
-      setTranscription(null);
-      setIntelligence(null);
-      setCurrentScreen('report');
-      return;
-    }
+    if (!supabaseOn) return;
     const full = await getCase(id);
     if (full) {
       setCaseData(full.caseData);
@@ -211,8 +192,10 @@ export default function App() {
       case 'consent':
         return (
           <ConsentGate
-            onConsent={() => setCurrentScreen('recording')}
+            onConsent={handleConsent}
             onCancel={() => setCurrentScreen('home')}
+            busy={consentBusy}
+            error={consentError}
           />
         );
       case 'recording':
@@ -232,14 +215,14 @@ export default function App() {
           />
         );
       case 'analysis':
-        return (
+        return caseId ? (
           <AnalysisInProgress
+            caseId={caseId}
             recording={recording}
-            caseData={caseData}
             onComplete={handleAnalysisComplete}
             onCancel={() => setCurrentScreen('complete')}
           />
-        );
+        ) : null;
       case 'report':
         return (
           <CaseIntelligenceReport

@@ -2,58 +2,70 @@
 
 import { getSupabase } from './supabase/client';
 
-/** Extensão coerente com o MIME do MediaRecorder. */
-export function extForMime(mime: string): string {
-  if (mime.includes('webm')) return 'webm';
-  if (mime.includes('mp4')) return 'mp4';
-  if (mime.includes('aac')) return 'm4a';
-  if (mime.includes('mpeg')) return 'mp3';
-  if (mime.includes('ogg')) return 'ogg';
-  if (mime.includes('wav')) return 'wav';
-  return 'webm';
-}
-
-export interface UploadedAudio {
-  /** Caminho no bucket (guardado no caso). */
-  path: string;
-  /** URL assinada de curta duração, para a rota de transcrição baixar. */
-  signedUrl: string;
-}
+export type UploadAudioResult = { ok: true } | { ok: false; error: string };
 
 /**
- * Sobe o áudio direto para o Supabase Storage (não passa pela Vercel, então
- * não esbarra no limite de corpo de requisição). Retorna null se o Supabase
- * não está configurado ou não há sessão — aí o fluxo usa o upload direto.
+ * Sobe o áudio via signed upload URL (Fase 1R2, item 6) — o navegador não
+ * tem mais nenhuma policy de Storage própria (INSERT/UPDATE/upsert) para o
+ * bucket `consultations`; o token assinado, emitido pela rota
+ * `/api/cases/[id]/audio-url` usando o client privilegiado, é a única
+ * autorização para este upload específico.
+ *
+ * Em três passos:
+ * 1. pede um token de upload assinado para o path canônico deste caso;
+ * 2. faz o upload em si direto pro Storage com esse token (bytes não
+ *    passam pelo servidor Next.js);
+ * 3. confirma a conclusão numa segunda rota, que revalida posse/estado,
+ *    recalcula o path (nunca confia no que o client ecoaria) e só então
+ *    marca o caso como `recorded` via client privilegiado — o navegador
+ *    não tem mais grant para escrever `audio_path`/`status` diretamente.
  */
 export async function uploadAudio(
+  caseId: string,
   blob: Blob,
   mimeType: string,
-): Promise<UploadedAudio | null> {
+): Promise<UploadAudioResult> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) return { ok: false, error: 'Backend não configurado.' };
 
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth.user?.id;
-  if (!userId) return null;
-
-  const path = `${userId}/${Date.now()}.${extForMime(mimeType)}`;
+  let urlResp: Response;
+  try {
+    urlResp = await fetch(`/api/cases/${caseId}/audio-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mimeType }),
+    });
+  } catch {
+    return { ok: false, error: 'Falha de rede ao preparar o envio do áudio. Tente novamente.' };
+  }
+  if (!urlResp.ok) {
+    const body = await urlResp.json().catch(() => ({}) as { error?: string });
+    return { ok: false, error: body.error ?? 'Não foi possível preparar o envio do áudio.' };
+  }
+  const { path, token } = (await urlResp.json()) as { path: string; token: string };
 
   const { error: uploadError } = await supabase.storage
     .from('consultations')
-    .upload(path, blob, { contentType: mimeType, upsert: false });
+    .uploadToSignedUrl(path, token, blob, { contentType: mimeType });
   if (uploadError) {
     console.error('uploadAudio:', uploadError.message);
-    return null;
+    return { ok: false, error: 'Não foi possível enviar o áudio. Verifique sua conexão e tente novamente.' };
   }
 
-  // URL assinada válida por 10 min — tempo de sobra para a transcrição.
-  const { data: signed, error: signError } = await supabase.storage
-    .from('consultations')
-    .createSignedUrl(path, 600);
-  if (signError || !signed?.signedUrl) {
-    console.error('uploadAudio sign:', signError?.message);
-    return null;
+  let confirmResp: Response;
+  try {
+    confirmResp = await fetch(`/api/cases/${caseId}/audio-confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mimeType }),
+    });
+  } catch {
+    return { ok: false, error: 'Áudio enviado, mas falha de rede ao confirmar. Tente novamente.' };
+  }
+  if (!confirmResp.ok) {
+    const body = await confirmResp.json().catch(() => ({}) as { error?: string });
+    return { ok: false, error: body.error ?? 'Áudio enviado, mas não foi possível confirmar. Tente novamente.' };
   }
 
-  return { path, signedUrl: signed.signedUrl };
+  return { ok: true };
 }

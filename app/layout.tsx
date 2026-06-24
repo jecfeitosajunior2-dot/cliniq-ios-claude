@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ClinIQ - Segundo Cérebro Clínico',
-  description: 'Inteligência clínica premium para médicos',
+  title: 'ClinIQ - Registro clínico estruturado',
+  description: 'O ClinIQ organiza informações da consulta. A revisão e a decisão final são sempre do médico.',
   generator: 'v0.app',
   icons: {
     icon: [
